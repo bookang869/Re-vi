@@ -76,16 +76,3 @@ echo "<your-secret>" > secrets/revi_webhook_secret
 No build/lint/test commands exist yet since there's no application code —
 once the Go Gateway is scaffolded, its `go build` / `go test ./...` commands
 belong here.
-
-## Docs
-
-| File | What it's for |
-| --- | --- |
-| [`docs/PRD.md`](docs/PRD.md) | Product spec — goals, user stories, edge cases |
-| [`docs/TRD.md`](docs/TRD.md) | Technical spec — architecture, API/data design, security |
-| [`docs/diagram.md`](docs/diagram.md) | ASCII/plain-English walkthrough of the pipeline |
-| [`docs/easy-workflow.md`](docs/easy-workflow.md) | Same, different angle — good first read |
-
-Both PRD and TRD say it themselves: *"Where it is unclear, do not guess —
-ask the user."* Anything marked `(assumption)` was never confirmed and
-should be verified before you rely on it.
