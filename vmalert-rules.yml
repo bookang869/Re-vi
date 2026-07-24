@@ -1,11 +1,13 @@
-# ponytail: placeholder rule — actual SLOs are app-specific, replace before production use.
 groups:
-  - name: revi-example-rules
+  - name: revi-rules
     rules:
       - alert: ServiceErrorRateHigh
-        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        # Gateway's alert mapping (TRD Sec 4) reads service_name<-labels.service,
+        # trace_id<-labels.trace_id, error_summary<-annotations.summary — the
+        # `by (service, trace_id)` here is what keeps both labels on the fired alert.
+        expr: sum by (service, trace_id) (rate(revi_http_requests_total{status=~"5.."}[5m])) > 0.05
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "High error rate on {{ $labels.service_name }}"
+          summary: "High error rate on {{ $labels.service }} (trace {{ $labels.trace_id }})"

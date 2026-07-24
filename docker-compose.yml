@@ -53,6 +53,23 @@ services:
       - revi-network
 
   # ----------------------------------------------------
+  # 3b. VictoriaLogs (Log storage; the Collector forwards logs here
+  #     for the Gateway's trace_id enrichment query — TRD FR-01b)
+  # ----------------------------------------------------
+  victoria-logs:
+    image: victoriametrics/victoria-logs:v1.52.0
+    container_name: revi-victoria-logs
+    restart: always
+    volumes:
+      - vl-data:/victoria-logs-data
+    ports:
+      - "9428:9428"   # HTTP query API + OTLP log ingestion endpoint
+    command:
+      - "--storageDataPath=/victoria-logs-data"
+    networks:
+      - revi-network
+
+  # ----------------------------------------------------
   # 4. vmalert (Evaluates Alerting Rules Against VictoriaMetrics)
   # ----------------------------------------------------
   vmalert:
@@ -90,6 +107,8 @@ services:
 
 volumes:
   vm-data:
+    driver: local
+  vl-data:
     driver: local
   nats-data:
     driver: local

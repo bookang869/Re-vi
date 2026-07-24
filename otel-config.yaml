@@ -15,6 +15,12 @@ exporters:
   prometheus:
     endpoint: "0.0.0.0:8889"
     namespace: "revi"
+  # VictoriaLogs OTLP ingestion path is /insert/opentelemetry/v1/logs;
+  # the otlphttp exporter appends /v1/logs to `endpoint` itself.
+  otlphttp/victorialogs:
+    endpoint: "http://victoria-logs:9428/insert/opentelemetry"
+    tls:
+      insecure: true
 
 service:
   pipelines:
@@ -22,6 +28,10 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/victorialogs]
   telemetry:
     logs:
       level: "info"
