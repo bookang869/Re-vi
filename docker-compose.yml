@@ -6,7 +6,7 @@ services:
   # ----------------------------------------------------
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.95.0
-    container_name: aegis-otel-collector
+    container_name: revi-otel-collector
     restart: always
     volumes:
       - ./otel-config.yaml:/etc/otelcol-contrib/config.yaml:ro
@@ -15,14 +15,14 @@ services:
       - "4318:4318"   # OTLP HTTP receiver port
       - "8889:8889"   # Prometheus metrics exporter internal endpoint
     networks:
-      - aegis-network
+      - revi-network
 
   # ----------------------------------------------------
   # 2. VictoriaMetrics (High-Performance Metrics Storage)
   # ----------------------------------------------------
   victoria-metrics:
     image: victoriametrics/victoria-metrics:v1.99.0
-    container_name: aegis-victoria-metrics
+    container_name: revi-victoria-metrics
     restart: always
     volumes:
       - vm-data:/victoria-metrics-data
@@ -34,14 +34,14 @@ services:
       # Scrape the Prometheus-format endpoint the Otel Collector exports on :8889
       - "--promscrape.config=/etc/victoriametrics/vm-scrape.yml"
     networks:
-      - aegis-network
+      - revi-network
 
   # ----------------------------------------------------
   # 3. NATS JetStream (The Resilient Message Buffer)
   # ----------------------------------------------------
   nats:
     image: nats:2.10-alpine
-    container_name: aegis-nats-queue
+    container_name: revi-nats-queue
     restart: always
     ports:
       - "4222:4222"   # NATS client connections
@@ -50,14 +50,14 @@ services:
     volumes:
       - nats-data:/data
     networks:
-      - aegis-network
+      - revi-network
 
   # ----------------------------------------------------
   # 4. vmalert (Evaluates Alerting Rules Against VictoriaMetrics)
   # ----------------------------------------------------
   vmalert:
     image: victoriametrics/vmalert:v1.99.0
-    container_name: aegis-vmalert
+    container_name: revi-vmalert
     restart: always
     volumes:
       - ./vmalert-rules.yml:/etc/vmalert/rules.yml:ro
@@ -67,7 +67,7 @@ services:
       - "--rule=/etc/vmalert/rules.yml"
       - "--evaluationInterval=30s"
     networks:
-      - aegis-network
+      - revi-network
     depends_on:
       - victoria-metrics
       - alertmanager
@@ -77,7 +77,7 @@ services:
   # ----------------------------------------------------
   alertmanager:
     image: prom/alertmanager:v0.27.0
-    container_name: aegis-alertmanager
+    container_name: revi-alertmanager
     restart: always
     volumes:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
@@ -86,7 +86,7 @@ services:
     ports:
       - "9093:9093"
     networks:
-      - aegis-network
+      - revi-network
 
 volumes:
   vm-data:
@@ -95,5 +95,5 @@ volumes:
     driver: local
 
 networks:
-  aegis-network:
+  revi-network:
     driver: bridge
