@@ -1,0 +1,11 @@
+# ponytail: placeholder rule — actual SLOs are app-specific, replace before production use.
+groups:
+  - name: revi-example-rules
+    rules:
+      - alert: ServiceErrorRateHigh
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate on {{ $labels.service_name }}"

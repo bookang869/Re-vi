@@ -1,0 +1,18 @@
+route:
+  receiver: revi-gateway
+  group_by: ['service_name']
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 3h
+
+receivers:
+  - name: revi-gateway
+    webhook_configs:
+      # Gateway service isn't in docker-compose.yml yet (separate implementation
+      # step) — this is the hostname it will be reachable at on aegis-network.
+      - url: 'http://gateway:8080/v1/alerts'
+        send_resolved: true
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /etc/alertmanager/secrets/revi_webhook_secret

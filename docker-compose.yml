@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------------------
+  # 1. OpenTelemetry Collector (The Ingestion Protocol)
+  # ----------------------------------------------------
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.95.0
+    container_name: aegis-otel-collector
+    restart: always
+    volumes:
+      - ./otel-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC receiver port (Highly recommended for speed)
+      - "4318:4318"   # OTLP HTTP receiver port
+      - "8889:8889"   # Prometheus metrics exporter internal endpoint
+    networks:
+      - aegis-network
+
+  # ----------------------------------------------------
+  # 2. VictoriaMetrics (High-Performance Metrics Storage)
+  # ----------------------------------------------------
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:v1.99.0
+    container_name: aegis-victoria-metrics
+    restart: always
+    volumes:
+      - vm-data:/victoria-metrics-data
+      - ./vm-scrape.yml:/etc/victoriametrics/vm-scrape.yml:ro
+    ports:
+      - "8428:8428"   # Web UI, Prometheus API query, & Influx native endpoints
+    command:
+      - "--storageDataPath=/victoria-metrics-data"
+      # Scrape the Prometheus-format endpoint the Otel Collector exports on :8889
+      - "--promscrape.config=/etc/victoriametrics/vm-scrape.yml"
+    networks:
+      - aegis-network
+
+  # ----------------------------------------------------
+  # 3. NATS JetStream (The Resilient Message Buffer)
+  # ----------------------------------------------------
+  nats:
+    image: nats:2.10-alpine
+    container_name: aegis-nats-queue
+    restart: always
+    ports:
+      - "4222:4222"   # NATS client connections
+      - "8222:8222"   # HTTP Monitoring server console
+    command: ["-js"]  # Explicitly enables the JetStream persistence engine
+    volumes:
+      - nats-data:/data
+    networks:
+      - aegis-network
+
+  # ----------------------------------------------------
+  # 4. vmalert (Evaluates Alerting Rules Against VictoriaMetrics)
+  # ----------------------------------------------------
+  vmalert:
+    image: victoriametrics/vmalert:v1.99.0
+    container_name: aegis-vmalert
+    restart: always
+    volumes:
+      - ./vmalert-rules.yml:/etc/vmalert/rules.yml:ro
+    command:
+      - "--datasource.url=http://victoria-metrics:8428"
+      - "--notifier.url=http://alertmanager:9093"
+      - "--rule=/etc/vmalert/rules.yml"
+      - "--evaluationInterval=30s"
+    networks:
+      - aegis-network
+    depends_on:
+      - victoria-metrics
+      - alertmanager
+
+  # ----------------------------------------------------
+  # 5. Alertmanager (Routes Firing Alerts to the Gateway)
+  # ----------------------------------------------------
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: aegis-alertmanager
+    restart: always
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Operator-provided file containing REVI_WEBHOOK_SECRET's value, not committed to git.
+      - ./secrets/revi_webhook_secret:/etc/alertmanager/secrets/revi_webhook_secret:ro
+    ports:
+      - "9093:9093"
+    networks:
+      - aegis-network
+
+volumes:
+  vm-data:
+    driver: local
+  nats-data:
+    driver: local
+
+networks:
+  aegis-network:
+    driver: bridge
