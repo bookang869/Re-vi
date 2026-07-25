@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/bookang869/Re-vi/gateway/internal/alerts"
 	"github.com/bookang869/Re-vi/gateway/internal/config"
 )
 
@@ -17,9 +18,7 @@ func main() {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	mux.HandleFunc("/v1/alerts", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotImplemented)
-	})
+	mux.HandleFunc("/v1/alerts", alerts.NewHandler(cfg.WebhookSecret))
 	mux.HandleFunc("/v1/digest/entry", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotImplemented)
 	})
