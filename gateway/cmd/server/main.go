@@ -30,7 +30,7 @@ func main() {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	mux.HandleFunc("/v1/alerts", alerts.NewHandler(cfg.WebhookSecret))
+	mux.HandleFunc("/v1/alerts", alerts.NewHandler(cfg.WebhookSecret, q, cfg.Mode))
 	mux.HandleFunc("/v1/digest/entry", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotImplemented)
 	})

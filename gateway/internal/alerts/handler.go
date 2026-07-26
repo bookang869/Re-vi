@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+
+	"github.com/bookang869/Re-vi/gateway/internal/queue"
 )
 
 // NewHandler returns the /v1/alerts handler. secret is REVI_WEBHOOK_SECRET;
-// requests must carry it as "Authorization: Bearer <secret>".
-func NewHandler(secret string) http.HandlerFunc {
+// requests must carry it as "Authorization: Bearer <secret>". mode is the
+// Gateway's own REVI_MODE, stamped into the lock record for visibility.
+func NewHandler(secret string, q *queue.Queue, mode string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !validBearer(r.Header.Get("Authorization"), secret) {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -36,9 +39,24 @@ func NewHandler(secret string) http.HandlerFunc {
 			return
 		}
 
-		// ponytail: NATS publish (flap lock + dispatch) lands in 2.3/2.4;
-		// for now a structurally valid firing alert is just accepted.
-		log.Printf("alerts: %d alert(s) mapped, ready for NATS publish", len(fired))
+		published := 0
+		for _, a := range fired {
+			ok, err := Publish(r.Context(), q, mode, a)
+			if err != nil {
+				log.Printf("alerts: publish failed for %s: %v", a.AlertID, err)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			if ok {
+				published++
+			}
+		}
+
+		if published == 0 {
+			// every alert in this group hit an active flap lock
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		w.WriteHeader(http.StatusAccepted)
 	}
 }
