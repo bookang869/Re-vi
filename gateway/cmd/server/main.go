@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/bookang869/Re-vi/gateway/internal/alerts"
 	"github.com/bookang869/Re-vi/gateway/internal/config"
+	"github.com/bookang869/Re-vi/gateway/internal/queue"
 )
 
 func main() {
@@ -13,6 +16,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
+
+	connectCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	q, err := queue.Connect(connectCtx, cfg.NATSURL)
+	cancel()
+	if err != nil {
+		log.Fatalf("nats: %v", err)
+	}
+	defer q.Close()
+	log.Printf("nats: connected, stream %s and KV buckets ready", queue.StreamName)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
