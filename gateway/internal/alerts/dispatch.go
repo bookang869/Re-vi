@@ -40,13 +40,14 @@ func Publish(ctx context.Context, q *queue.Queue, mode string, a Alert) (publish
 		return false, err
 	}
 	if alreadyLocked {
+		lockKey := queue.LockKey(a.ServiceName, a.ErrorSummary)
 		marker := queue.DigestEntry{
-			AlertID:   a.AlertID,
-			Message:   "[⚠️ HEALING LOOP HALTED] " + a.ErrorSummary,
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			AlertID:  a.AlertID,
+			Message:  "[⚠️ HEALING LOOP HALTED] " + a.ErrorSummary,
+			LastSeen: time.Now().UTC().Format(time.RFC3339),
 		}
-		if err := q.AppendDigestEntry(ctx, time.Now().Format("2006-01-02"), marker); err != nil {
-			log.Printf("alerts: failed to append digest halt marker for %s: %v", a.AlertID, err)
+		if err := q.UpsertDigestEntry(ctx, time.Now().Format("2006-01-02"), lockKey, marker); err != nil {
+			log.Printf("alerts: failed to record digest halt marker for %s: %v", a.AlertID, err)
 		}
 		return false, nil
 	}
