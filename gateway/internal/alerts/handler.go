@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/bookang869/Re-vi/gateway/internal/metrics"
 	"github.com/bookang869/Re-vi/gateway/internal/queue"
 	"github.com/bookang869/Re-vi/gateway/internal/victorialogs"
 )
@@ -42,6 +43,8 @@ func NewHandler(secret string, q *queue.Queue, logsClient *victorialogs.Client, 
 
 		published := 0
 		for _, a := range fired {
+			metrics.IncAlertsReceived()
+			log.Printf("revi.alert.received alert_id=%s service=%s", a.AlertID, a.ServiceName)
 			ok, err := Publish(r.Context(), q, logsClient, mode, a)
 			if err != nil {
 				log.Printf("alerts: publish failed for %s: %v", a.AlertID, err)

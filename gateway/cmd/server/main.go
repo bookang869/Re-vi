@@ -12,6 +12,7 @@ import (
 	"github.com/bookang869/Re-vi/gateway/internal/digestcron"
 	"github.com/bookang869/Re-vi/gateway/internal/dispatcher"
 	"github.com/bookang869/Re-vi/gateway/internal/github"
+	"github.com/bookang869/Re-vi/gateway/internal/metrics"
 	"github.com/bookang869/Re-vi/gateway/internal/queue"
 	"github.com/bookang869/Re-vi/gateway/internal/slack"
 	"github.com/bookang869/Re-vi/gateway/internal/victorialogs"
@@ -48,6 +49,7 @@ func main() {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+	mux.HandleFunc("/metrics", metrics.Handler)
 	logsClient := victorialogs.NewClient(cfg.VictoriaLogsURL)
 	mux.HandleFunc("/v1/alerts", alerts.NewHandler(cfg.WebhookSecret, q, logsClient, cfg.Mode))
 	mux.HandleFunc("/v1/digest/entry", digest.NewHandler(cfg.WebhookSecret, q))

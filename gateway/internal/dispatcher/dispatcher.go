@@ -12,6 +12,7 @@ import (
 
 	"github.com/bookang869/Re-vi/gateway/internal/alerts"
 	"github.com/bookang869/Re-vi/gateway/internal/github"
+	"github.com/bookang869/Re-vi/gateway/internal/metrics"
 	"github.com/bookang869/Re-vi/gateway/internal/queue"
 )
 
@@ -55,6 +56,8 @@ func Run(ctx context.Context, q *queue.Queue, gh *github.Client, mode string) (j
 			msg.Nak()
 			return
 		}
+		metrics.IncModeRouting(mode)
+		log.Printf("revi.mode.evaluated alert_id=%s mode=%s", a.AlertID, mode)
 		log.Printf("dispatcher: repository_dispatch sent for %s (mode=%s)", a.AlertID, mode)
 		msg.Ack()
 	})
