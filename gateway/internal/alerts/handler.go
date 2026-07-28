@@ -7,12 +7,13 @@ import (
 	"net/http"
 
 	"github.com/bookang869/Re-vi/gateway/internal/queue"
+	"github.com/bookang869/Re-vi/gateway/internal/victorialogs"
 )
 
 // NewHandler returns the /v1/alerts handler. secret is REVI_WEBHOOK_SECRET;
 // requests must carry it as "Authorization: Bearer <secret>". mode is the
 // Gateway's own REVI_MODE, stamped into the lock record for visibility.
-func NewHandler(secret string, q *queue.Queue, mode string) http.HandlerFunc {
+func NewHandler(secret string, q *queue.Queue, logsClient *victorialogs.Client, mode string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !validBearer(r.Header.Get("Authorization"), secret) {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -41,7 +42,7 @@ func NewHandler(secret string, q *queue.Queue, mode string) http.HandlerFunc {
 
 		published := 0
 		for _, a := range fired {
-			ok, err := Publish(r.Context(), q, mode, a)
+			ok, err := Publish(r.Context(), q, logsClient, mode, a)
 			if err != nil {
 				log.Printf("alerts: publish failed for %s: %v", a.AlertID, err)
 				http.Error(w, "internal error", http.StatusInternalServerError)

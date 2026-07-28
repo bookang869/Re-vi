@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bookang869/Re-vi/gateway/internal/queue"
+	"github.com/bookang869/Re-vi/gateway/internal/victorialogs"
 )
 
 // lockRecord is the value stored under the flap lock key (TRD Sec 4).
@@ -20,11 +21,11 @@ type lockRecord struct {
 	LockedAt string `json:"locked_at"`
 }
 
-// Publish checks the flap lock for a and, if clear, sets it and publishes
-// the alert onto the NATS stream. If the lock is already held, it appends a
-// "healing loop halted" marker to today's digest buffer instead of
-// dispatching again (TRD Sec 4).
-func Publish(ctx context.Context, q *queue.Queue, mode string, a Alert) (published bool, err error) {
+// Publish checks the flap lock for a and, if clear, enriches it with
+// VictoriaLogs context and publishes it onto the NATS stream. If the lock
+// is already held, it appends a "healing loop halted" marker to today's
+// digest buffer instead of dispatching again (TRD Sec 4).
+func Publish(ctx context.Context, q *queue.Queue, logsClient *victorialogs.Client, mode string, a Alert) (published bool, err error) {
 	lockValue, err := json.Marshal(lockRecord{
 		AlertID:  a.AlertID,
 		Status:   "PROCESSING",
@@ -51,6 +52,8 @@ func Publish(ctx context.Context, q *queue.Queue, mode string, a Alert) (publish
 		}
 		return false, nil
 	}
+
+	a.LogContext = logsClient.FetchContext(ctx, a.TraceID)
 
 	payload, err := json.Marshal(a)
 	if err != nil {

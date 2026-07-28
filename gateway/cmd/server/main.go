@@ -9,6 +9,7 @@ import (
 	"github.com/bookang869/Re-vi/gateway/internal/alerts"
 	"github.com/bookang869/Re-vi/gateway/internal/config"
 	"github.com/bookang869/Re-vi/gateway/internal/queue"
+	"github.com/bookang869/Re-vi/gateway/internal/victorialogs"
 )
 
 func main() {
@@ -30,7 +31,8 @@ func main() {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	mux.HandleFunc("/v1/alerts", alerts.NewHandler(cfg.WebhookSecret, q, cfg.Mode))
+	logsClient := victorialogs.NewClient(cfg.VictoriaLogsURL)
+	mux.HandleFunc("/v1/alerts", alerts.NewHandler(cfg.WebhookSecret, q, logsClient, cfg.Mode))
 	mux.HandleFunc("/v1/digest/entry", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotImplemented)
 	})

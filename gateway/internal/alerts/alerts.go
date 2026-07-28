@@ -27,6 +27,7 @@ type Alert struct {
 	TraceID      string `json:"trace_id"`
 	ErrorSummary string `json:"error_summary"`
 	Timestamp    string `json:"timestamp"`
+	LogContext   string `json:"log_context,omitempty"`
 }
 
 // mapAlerts maps each firing element of payload.Alerts to the internal

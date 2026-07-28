@@ -35,7 +35,7 @@ func doRequest(t *testing.T, q *queue.Queue, body, authHeader string) *httptest.
 		req.Header.Set("Authorization", authHeader)
 	}
 	rec := httptest.NewRecorder()
-	NewHandler(testSecret, q, "PR_REVIEW")(rec, req)
+	NewHandler(testSecret, q, nil, "PR_REVIEW")(rec, req)
 	return rec
 }
 

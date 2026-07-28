@@ -32,7 +32,7 @@ func TestPublish_RepeatedFlapCollapsesIntoOneDigestEntryWithCount(t *testing.T) 
 		t.Fatalf("stream info: %v", err)
 	}
 
-	published1, err := Publish(ctx, q, "PR_REVIEW", a)
+	published1, err := Publish(ctx, q, nil, "PR_REVIEW", a)
 	if err != nil {
 		t.Fatalf("first Publish: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestPublish_RepeatedFlapCollapsesIntoOneDigestEntryWithCount(t *testing.T) 
 	// simulate the alert flapping three more times within the lock TTL
 	const flapCount = 3
 	for i := 0; i < flapCount; i++ {
-		published, err := Publish(ctx, q, "PR_REVIEW", a)
+		published, err := Publish(ctx, q, nil, "PR_REVIEW", a)
 		if err != nil {
 			t.Fatalf("flap Publish %d: %v", i, err)
 		}
