@@ -59,6 +59,12 @@ func Load() (Config, error) {
 	if cfg.WebhookSecret == "" {
 		return cfg, fmt.Errorf("REVI_WEBHOOK_SECRET is required")
 	}
+	if cfg.GitHubTokenDispatch == "" {
+		return cfg, fmt.Errorf("GITHUB_TOKEN_DISPATCH is required")
+	}
+	if cfg.GitHubOwner == "" || cfg.GitHubRepo == "" {
+		return cfg, fmt.Errorf("REVI_GITHUB_OWNER and REVI_GITHUB_REPO are required")
+	}
 
 	return cfg, nil
 }

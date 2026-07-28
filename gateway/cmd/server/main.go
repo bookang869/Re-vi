@@ -8,6 +8,8 @@ import (
 
 	"github.com/bookang869/Re-vi/gateway/internal/alerts"
 	"github.com/bookang869/Re-vi/gateway/internal/config"
+	"github.com/bookang869/Re-vi/gateway/internal/dispatcher"
+	"github.com/bookang869/Re-vi/gateway/internal/github"
 	"github.com/bookang869/Re-vi/gateway/internal/queue"
 	"github.com/bookang869/Re-vi/gateway/internal/victorialogs"
 )
@@ -26,6 +28,14 @@ func main() {
 	}
 	defer q.Close()
 	log.Printf("nats: connected, stream %s and KV buckets ready", queue.StreamName)
+
+	gh := github.NewClient(cfg.GitHubTokenDispatch, cfg.GitHubOwner, cfg.GitHubRepo)
+	consumeCtx, err := dispatcher.Run(context.Background(), q, gh, cfg.Mode)
+	if err != nil {
+		log.Fatalf("dispatcher: %v", err)
+	}
+	defer consumeCtx.Stop()
+	log.Printf("dispatcher: consuming %s, dispatching to %s/%s", queue.StreamName, cfg.GitHubOwner, cfg.GitHubRepo)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {

@@ -16,13 +16,46 @@ func TestNormalizeMode(t *testing.T) {
 	}
 }
 
+// setRequiredEnv sets every env var Load() requires to succeed, so
+// individual tests can unset just the one they're checking.
+func setRequiredEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("REVI_WEBHOOK_SECRET", "shh")
+	t.Setenv("GITHUB_TOKEN_DISPATCH", "ghp_test")
+	t.Setenv("REVI_GITHUB_OWNER", "acme")
+	t.Setenv("REVI_GITHUB_REPO", "widgets")
+}
+
 func TestLoadRequiresWebhookSecret(t *testing.T) {
+	setRequiredEnv(t)
 	t.Setenv("REVI_WEBHOOK_SECRET", "")
 	if _, err := Load(); err == nil {
 		t.Error("Load() with no REVI_WEBHOOK_SECRET should error")
 	}
+}
 
-	t.Setenv("REVI_WEBHOOK_SECRET", "shh")
+func TestLoadRequiresGitHubDispatchConfig(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("GITHUB_TOKEN_DISPATCH", "")
+	if _, err := Load(); err == nil {
+		t.Error("Load() with no GITHUB_TOKEN_DISPATCH should error")
+	}
+
+	setRequiredEnv(t)
+	t.Setenv("REVI_GITHUB_OWNER", "")
+	if _, err := Load(); err == nil {
+		t.Error("Load() with no REVI_GITHUB_OWNER should error")
+	}
+
+	setRequiredEnv(t)
+	t.Setenv("REVI_GITHUB_REPO", "")
+	if _, err := Load(); err == nil {
+		t.Error("Load() with no REVI_GITHUB_REPO should error")
+	}
+}
+
+func TestLoadDefaults(t *testing.T) {
+	setRequiredEnv(t)
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() unexpected error: %v", err)
