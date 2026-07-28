@@ -9,9 +9,11 @@ import (
 	"github.com/bookang869/Re-vi/gateway/internal/alerts"
 	"github.com/bookang869/Re-vi/gateway/internal/config"
 	"github.com/bookang869/Re-vi/gateway/internal/digest"
+	"github.com/bookang869/Re-vi/gateway/internal/digestcron"
 	"github.com/bookang869/Re-vi/gateway/internal/dispatcher"
 	"github.com/bookang869/Re-vi/gateway/internal/github"
 	"github.com/bookang869/Re-vi/gateway/internal/queue"
+	"github.com/bookang869/Re-vi/gateway/internal/slack"
 	"github.com/bookang869/Re-vi/gateway/internal/victorialogs"
 )
 
@@ -37,6 +39,10 @@ func main() {
 	}
 	defer consumeCtx.Stop()
 	log.Printf("dispatcher: consuming %s, dispatching to %s/%s", queue.StreamName, cfg.GitHubOwner, cfg.GitHubRepo)
+
+	sc := slack.NewClient(cfg.SlackWebhookURL)
+	digestcron.Run(context.Background(), q, sc, cfg.DigestTime)
+	log.Printf("digestcron: scheduled for %s local daily", cfg.DigestTime)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
