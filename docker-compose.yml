@@ -105,6 +105,32 @@ services:
     networks:
       - revi-network
 
+  # ----------------------------------------------------
+  # 6. Go Ingestion Gateway (HTTP ingest, NATS dispatcher,
+  #    digest cron — all three in one binary, TRD Sec 2)
+  # ----------------------------------------------------
+  gateway:
+    build: ./gateway
+    container_name: revi-gateway
+    restart: always
+    ports:
+      - "8080:8080"   # Alertmanager -> /v1/alerts, GHA runner -> /v1/digest/entry, VM -> /metrics
+    environment:
+      REVI_WEBHOOK_SECRET: ${REVI_WEBHOOK_SECRET:?set in .env or the shell environment}
+      GITHUB_TOKEN_DISPATCH: ${GITHUB_TOKEN_DISPATCH:?set in .env or the shell environment}
+      REVI_GITHUB_OWNER: ${REVI_GITHUB_OWNER:?set in .env or the shell environment}
+      REVI_GITHUB_REPO: ${REVI_GITHUB_REPO:?set in .env or the shell environment}
+      REVI_MODE: ${REVI_MODE:-PR_REVIEW}
+      REVI_DIGEST_TIME: ${REVI_DIGEST_TIME:-08:00}
+      SLACK_DIGEST_WEBHOOK_URL: ${SLACK_DIGEST_WEBHOOK_URL:-}
+      REVI_ESCALATION_WEBHOOK_URL: ${REVI_ESCALATION_WEBHOOK_URL:-}
+      REVI_ESCALATION_WEBHOOK_SECRET: ${REVI_ESCALATION_WEBHOOK_SECRET:-}
+    networks:
+      - revi-network
+    depends_on:
+      - nats
+      - victoria-logs
+
 volumes:
   vm-data:
     driver: local
