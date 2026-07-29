@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"time"
 
 	"github.com/nats-io/nats.go/jetstream"
 
@@ -19,6 +20,18 @@ import (
 // eventType must match hermes-triage.yml's `on: repository_dispatch: types:`
 // in the target repo.
 const eventType = "revi-triage"
+
+// maxDispatchAttempts bounds retries for a persistently-failing dispatch
+// (bad token, deleted repo, ...) so it can't loop forever. dispatchRetryDelay
+// is a var, not a const, so tests can shrink it — production traffic never
+// touches it directly.
+//
+// ponytail: fixed delay, not exponential backoff. The bug this fixes was
+// zero delay (a tight retry storm), not a suboptimal curve; add backoff if
+// GitHub API load from retries ever becomes a real concern.
+const maxDispatchAttempts = 10
+
+var dispatchRetryDelay = 30 * time.Second
 
 // clientPayload is what the runner reads via github.event.client_payload.*.
 // mode is the Gateway's own REVI_MODE (already normalized to PR_REVIEW or
@@ -52,8 +65,13 @@ func Run(ctx context.Context, q *queue.Queue, gh *github.Client, mode string) (j
 			LogContext:   a.LogContext,
 		}
 		if err := gh.Dispatch(ctx, eventType, payload); err != nil {
+			if md, mderr := msg.Metadata(); mderr == nil && md.NumDelivered >= maxDispatchAttempts {
+				log.Printf("dispatcher: giving up on %s after %d attempts: %v", a.AlertID, md.NumDelivered, err)
+				msg.Term()
+				return
+			}
 			log.Printf("dispatcher: repository_dispatch failed for %s, will retry: %v", a.AlertID, err)
-			msg.Nak()
+			msg.NakWithDelay(dispatchRetryDelay)
 			return
 		}
 		metrics.IncModeRouting(mode)

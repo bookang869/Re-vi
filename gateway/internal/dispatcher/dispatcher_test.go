@@ -97,6 +97,84 @@ func TestRun_DispatchesPublishedAlert(t *testing.T) {
 	}
 }
 
+// TestRun_GivesUpAfterMaxAttempts guards against the retry storm found in
+// production (Phase 2.10): a persistently-failing dispatch must stop
+// retrying after maxDispatchAttempts, not loop forever with no backoff.
+func TestRun_GivesUpAfterMaxAttempts(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	q, err := queue.Connect(ctx, "nats://127.0.0.1:4222")
+	if err != nil {
+		t.Skipf("no local NATS reachable, skipping: %v", err)
+	}
+	defer q.Close()
+
+	original := dispatchRetryDelay
+	dispatchRetryDelay = 20 * time.Millisecond
+	defer func() { dispatchRetryDelay = original }()
+
+	var mu sync.Mutex
+	var gotBodies []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		mu.Lock()
+		gotBodies = append(gotBodies, body)
+		mu.Unlock()
+		w.WriteHeader(http.StatusInternalServerError) // always fails
+	}))
+	defer srv.Close()
+
+	gh := github.NewClient("test-token", "acme", "widgets")
+	gh.BaseURL = srv.URL
+
+	consumeCtx, err := Run(context.Background(), q, gh, "PR_REVIEW")
+	if err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+	defer consumeCtx.Stop()
+
+	a := alerts.Alert{
+		AlertID:      fmt.Sprintf("giveup-test-%d", time.Now().UnixNano()),
+		Status:       "firing",
+		ServiceName:  "payment-processor",
+		TraceID:      "abc",
+		ErrorSummary: "boom",
+	}
+	payload, err := json.Marshal(a)
+	if err != nil {
+		t.Fatalf("marshal alert: %v", err)
+	}
+	if _, err := q.JS.Publish(context.Background(), queue.AlertSubject, payload); err != nil {
+		t.Fatalf("publish alert: %v", err)
+	}
+
+	countAttempts := func() int {
+		n := 0
+		for _, body := range snapshot(&mu, &gotBodies) {
+			if cp, ok := body["client_payload"].(map[string]any); ok && cp["alert_id"] == a.AlertID {
+				n++
+			}
+		}
+		return n
+	}
+
+	deadline := time.After(3 * time.Second)
+	for countAttempts() < maxDispatchAttempts {
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for %d attempts; saw %d", maxDispatchAttempts, countAttempts())
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+
+	// give it a chance to over-retry if Term() didn't actually stop redelivery
+	time.Sleep(500 * time.Millisecond)
+	if got := countAttempts(); got != maxDispatchAttempts {
+		t.Errorf("got %d dispatch attempts after giving up, want exactly %d", got, maxDispatchAttempts)
+	}
+}
+
 func snapshot(mu *sync.Mutex, bodies *[]map[string]any) []map[string]any {
 	mu.Lock()
 	defer mu.Unlock()
