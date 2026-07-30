@@ -40,6 +40,7 @@ var dispatchRetryDelay = 30 * time.Second
 type clientPayload struct {
 	Mode         string `json:"mode"`
 	AlertID      string `json:"alert_id"`
+	ServiceName  string `json:"service_name"`
 	TraceID      string `json:"trace_id"`
 	ErrorSummary string `json:"error_summary"`
 	LogContext   string `json:"log_context"`
@@ -60,6 +61,7 @@ func Run(ctx context.Context, q *queue.Queue, gh *github.Client, mode string) (j
 		payload := clientPayload{
 			Mode:         mode,
 			AlertID:      a.AlertID,
+			ServiceName:  a.ServiceName,
 			TraceID:      a.TraceID,
 			ErrorSummary: a.ErrorSummary,
 			LogContext:   a.LogContext,

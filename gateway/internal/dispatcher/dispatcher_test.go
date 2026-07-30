@@ -77,6 +77,9 @@ func TestRun_DispatchesPublishedAlert(t *testing.T) {
 			if cp["mode"] != "PR_REVIEW" {
 				t.Errorf("mode = %v, want PR_REVIEW", cp["mode"])
 			}
+			if cp["service_name"] != a.ServiceName {
+				t.Errorf("service_name = %v, want %v", cp["service_name"], a.ServiceName)
+			}
 			if cp["trace_id"] != a.TraceID {
 				t.Errorf("trace_id = %v, want %v", cp["trace_id"], a.TraceID)
 			}
