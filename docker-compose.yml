@@ -131,8 +131,32 @@ services:
       - nats
       - victoria-logs
 
+  # ----------------------------------------------------
+  # 7. Tailscale Funnel (exposes gateway:8080 publicly via a stable
+  #    *.ts.net URL so the GitHub-hosted runner can reach
+  #    /v1/digest/entry — PLAN 5.1)
+  # ----------------------------------------------------
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: revi-tailscale
+    hostname: revi-gateway
+    restart: always
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:?set in .env or the shell environment}
+      TS_HOSTNAME: revi-gateway
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+    networks:
+      - revi-network
+    depends_on:
+      - gateway
+
 volumes:
   vm-data:
+    driver: local
+  tailscale-state:
     driver: local
   vl-data:
     driver: local
