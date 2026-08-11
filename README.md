@@ -25,6 +25,9 @@ Ingestion Gateway, `hermes-triage.yml`, and the Hermes wrapper are specified
 in detail but not yet implemented — see [`docs/PRD.md`](docs/PRD.md) and
 [`docs/TRD.md`](docs/TRD.md), which are living specs and the source of truth
 whenever this README, `diagram.md`, or `easy-workflow.md` disagree with them.
+`hermes-triage.yml`, the Hermes wrapper, and a fixture app stand-in for "the
+production repo" live in a companion repo,
+[`revi-hermes-scratch`](https://github.com/bookang869/revi-hermes-scratch).
 
 ## How it fits together
 
