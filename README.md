@@ -27,7 +27,7 @@ in detail but not yet implemented — see [`docs/PRD.md`](docs/PRD.md) and
 whenever this README, `diagram.md`, or `easy-workflow.md` disagree with them.
 `hermes-triage.yml`, the Hermes wrapper, and a fixture app stand-in for "the
 production repo" live in a companion repo,
-[`revi-hermes-scratch`](https://github.com/bookang869/revi-hermes-scratch).
+[`revi-hermes-target`](https://github.com/bookang869/revi-hermes-target).
 
 ## How it fits together
 

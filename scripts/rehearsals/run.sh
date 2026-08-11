@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PLAN Phase 5.3 -- full-loop rehearsal runbook. Each scenario is a function;
 # `main` dispatches by name. Encodes exactly what was validated manually
-# against the real local stack + bookang869/revi-hermes-scratch on
+# against the real local stack + bookang869/revi-hermes-target on
 # 2026-08-09/10 (see PLAN.md's 5.3 entry for the run log and findings).
 #
 # Requires: REVI_GITHUB_OWNER/REVI_GITHUB_REPO/REVI_WEBHOOK_SECRET from
