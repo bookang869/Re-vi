@@ -20,13 +20,14 @@ trust your test suite:
 
 ## Status
 
-**Only the observability/alerting infrastructure exists today.** The Go
-Ingestion Gateway, `hermes-triage.yml`, and the Hermes wrapper are specified
-in detail but not yet implemented — see [`docs/PRD.md`](docs/PRD.md) and
-[`docs/TRD.md`](docs/TRD.md), which are living specs and the source of truth
-whenever this README, `diagram.md`, or `easy-workflow.md` disagree with them.
-`hermes-triage.yml`, the Hermes wrapper, and a fixture app stand-in for "the
-production repo" live in a companion repo,
+**The observability/alerting infrastructure and the Go Ingestion Gateway
+both exist today.** The `hermes-triage.yml` GitHub Actions workflow and the
+Hermes wrapper script are still unimplemented — they're specified in detail
+in [`docs/PRD.md`](docs/PRD.md) / [`docs/TRD.md`](docs/TRD.md), which are
+living specs and the source of truth whenever this README, `diagram.md`, or
+`easy-workflow.md` disagree with them. `hermes-triage.yml`, the Hermes
+wrapper, and a fixture app stand-in for "the production repo" live in a
+companion repo,
 [`revi-hermes-target`](https://github.com/bookang869/revi-hermes-target).
 
 ## How it fits together
@@ -36,7 +37,7 @@ App --OTLP/gRPC--> OTel Collector --scrape--> VictoriaMetrics --evaluate--> vmal
   --> Alertmanager --webhook--> Go Ingestion Gateway
 ```
 
-The Gateway (single Go binary, not yet built) is one process with three jobs:
+The Gateway (`gateway/`, a single Go binary) is one process with three jobs:
 
 1. `POST /v1/alerts` — validates Alertmanager's native alert JSON, checks a
    NATS JetStream KV lock (dedupes flapping alerts), enriches with
@@ -65,17 +66,29 @@ locking and token rules have constraints that aren't obvious from a
 docker compose up -d
 ```
 
-Brings up `otel-collector`, `victoria-metrics`, `nats` (JetStream), `vmalert`,
-and `alertmanager`. The `gateway` service isn't in `docker-compose.yml` yet —
-its hostname is pre-wired in `alertmanager.yml` for when it lands.
+Brings up `otel-collector`, `victoria-metrics`, `victoria-logs`, `nats`
+(JetStream), `vmalert`, `alertmanager`, `gateway`, and `tailscale` (Funnel
+tunnel so the GitHub-hosted runner can reach `/v1/digest/entry`).
 
-Before starting, create the gitignored webhook secret Alertmanager expects:
+Requires a gitignored `.env` for the `gateway` and `tailscale` services'
+secrets — copy [`.env.example`](.env.example) to `.env` and fill it in.
+`REVI_WEBHOOK_SECRET`, `GITHUB_TOKEN_DISPATCH`, `REVI_GITHUB_OWNER`,
+`REVI_GITHUB_REPO`, and `TS_AUTHKEY` are required (compose fails fast if
+unset); everything else has a safe default. `REVI_WEBHOOK_SECRET` must match
+`secrets/revi_webhook_secret` (Alertmanager reads the file, the Gateway
+reads the env var — same secret, two consumers):
 
 ```
 mkdir -p secrets
-echo "<your-secret>" > secrets/revi_webhook_secret
+openssl rand -hex 32 > secrets/revi_webhook_secret
 ```
 
-No build/lint/test commands exist yet since there's no application code —
-once the Go Gateway is scaffolded, its `go build` / `go test ./...` commands
-belong here.
+### Gateway (Go)
+
+```
+cd gateway
+go build ./...              # compile
+go test ./...                # run tests
+go run ./cmd/server          # start the binary (needs REVI_WEBHOOK_SECRET set)
+docker build -t revi-gateway .   # multi-stage build; what docker-compose builds too
+```
