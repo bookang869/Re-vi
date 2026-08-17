@@ -20,15 +20,21 @@ trust your test suite:
 
 ## Status
 
-**The observability/alerting infrastructure and the Go Ingestion Gateway
-both exist today.** The `hermes-triage.yml` GitHub Actions workflow and the
-Hermes wrapper script are still unimplemented — they're specified in detail
-in [`docs/PRD.md`](docs/PRD.md) / [`docs/TRD.md`](docs/TRD.md), which are
-living specs and the source of truth whenever this README, `diagram.md`, or
-`easy-workflow.md` disagree with them. `hermes-triage.yml`, the Hermes
-wrapper, and a fixture app stand-in for "the production repo" live in a
-companion repo,
-[`revi-hermes-target`](https://github.com/bookang869/revi-hermes-target).
+**V1 is complete.** The observability/alerting infrastructure, the Go
+Ingestion Gateway, `hermes-triage.yml`, and the Hermes wrapper script all
+exist and have been verified end-to-end — both `PR_REVIEW` and `AUTONOMOUS`
+modes have live-tested runs (real `repository_dispatch` dispatches, real
+PRs/merges, real pages) against the companion repo,
+[`revi-hermes-target`](https://github.com/bookang869/revi-hermes-target),
+which holds `hermes-triage.yml`, the Hermes wrapper, and a fixture app
+standing in for "the production repo." Work has moved on to the Phase 6
+post-V1 backlog (re-provisioning a VPS, linter validation in Hermes's repair
+loop, lock-refresh-while-active testing, multi-language support, and more) —
+see [`docs/PLAN.md`](docs/PLAN.md) for the full list.
+
+[`docs/PRD.md`](docs/PRD.md) / [`docs/TRD.md`](docs/TRD.md) are living specs
+and remain the source of truth whenever this README, `diagram.md`, or
+`easy-workflow.md` disagree with them.
 
 ## How it fits together
 
