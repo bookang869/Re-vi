@@ -32,9 +32,39 @@ companion repo,
 
 ## How it fits together
 
-```
-App --OTLP/gRPC--> OTel Collector --scrape--> VictoriaMetrics --evaluate--> vmalert
-  --> Alertmanager --webhook--> Go Ingestion Gateway
+```mermaid
+flowchart TD
+    subgraph VPC["Production VPC"]
+        direction TB
+        App["Your App"] -->|OTLP/gRPC| Otel["OTel Collector"]
+        Otel -->|scrape| VM["VictoriaMetrics"]
+        Otel -->|logs| VL["VictoriaLogs"]
+        VM -->|evaluate| vmalert["vmalert"]
+        vmalert --> AM["Alertmanager"]
+    end
+
+    AM -->|webhook| GW["Go Ingestion Gateway"]
+    GW -.->|log context query| VL
+    GW --> NATS["NATS JetStream"]
+
+    subgraph RUNNER["GitHub Actions (ephemeral, isolation boundary)"]
+        direction TB
+        GHA["Runner: repository_dispatch"] --> Hermes["Hermes Agent"]
+        Hermes -->|PR_REVIEW| PR["Open PR on<br/>hermes/hotfix-*"]
+        Hermes -->|AUTONOMOUS| Merge["Smoke test + full suite<br/>→ merge to main"]
+    end
+
+    NATS --> GHA
+
+    subgraph OUT["Outcomes"]
+        direction TB
+        ESC["Escalation webhook<br/>(pages on-call)"]
+        Digest["Digest → Slack<br/>#triage-morning-review (08:00)"]
+    end
+
+    PR --> ESC
+    Merge -->|failure| ESC
+    GHA -->|every run| Digest
 ```
 
 The Gateway (`gateway/`, a single Go binary) is one process with three jobs:
