@@ -20,7 +20,7 @@ func testQueue(t *testing.T) *queue.Queue {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	q, err := queue.Connect(ctx, "nats://127.0.0.1:4222")
+	q, err := queue.ConnectTest(ctx, "nats://127.0.0.1:4222")
 	if err != nil {
 		t.Skipf("no local NATS reachable, skipping: %v", err)
 	}

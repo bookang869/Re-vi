@@ -23,7 +23,7 @@ func TestPublish_RepeatedFlapCollapsesIntoOneDigestEntryWithCount(t *testing.T) 
 		ErrorSummary: fmt.Sprintf("boom-%d", time.Now().UnixNano()), // unique per run
 	}
 
-	streamBefore, err := q.JS.Stream(ctx, queue.StreamName)
+	streamBefore, err := q.JS.Stream(ctx, q.StreamName)
 	if err != nil {
 		t.Fatalf("stream info: %v", err)
 	}

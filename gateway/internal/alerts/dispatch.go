@@ -59,7 +59,7 @@ func Publish(ctx context.Context, q *queue.Queue, logsClient *victorialogs.Clien
 	if err != nil {
 		return false, fmt.Errorf("encode alert: %w", err)
 	}
-	if _, err := q.JS.Publish(ctx, queue.AlertSubject, payload); err != nil {
+	if _, err := q.JS.Publish(ctx, q.AlertSubject, payload); err != nil {
 		// ponytail: the lock is already set at this point; a publish
 		// failure here leaves the alert stuck until the 30-min TTL
 		// expires. Add a rollback (delete the lock) if this proves to

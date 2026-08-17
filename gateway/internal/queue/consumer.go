@@ -15,7 +15,7 @@ const consumerName = "dispatcher"
 // invokes handler for each message. handler is responsible for
 // Ack/Nak/Term-ing the message itself.
 func (q *Queue) Consume(ctx context.Context, handler jetstream.MessageHandler) (jetstream.ConsumeContext, error) {
-	cons, err := q.JS.CreateOrUpdateConsumer(ctx, StreamName, jetstream.ConsumerConfig{
+	cons, err := q.JS.CreateOrUpdateConsumer(ctx, q.StreamName, jetstream.ConsumerConfig{
 		Durable:   consumerName,
 		AckPolicy: jetstream.AckExplicitPolicy,
 	})
