@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Recursive validation gate for local commits, mirroring the build -> vet -> test
+# chain docs/TRD.md defines as the *only* authoritative signal for Hermes's own
+# AUTONOMOUS-mode patches (Hermes's process exit code is never trusted; see
+# CLAUDE.md's "Non-obvious constraints" section). Human commits go through the
+# same gate so there is one definition of "validated" for both paths, not two.
+#
+# Install once per clone:  git config core.hooksPath scripts/hooks
+set -euo pipefail
+
+if ! git diff --cached --name-only --diff-filter=ACMR | grep -q '^gateway/'; then
+  exit 0
+fi
+
+cd "$(git rev-parse --show-toplevel)/gateway"
+
+run_gate() {
+  local label="$1"
+  shift
+  local log
+  log="$(mktemp)"
+  if ! "$@" >"$log" 2>&1; then
+    echo "----- ${label} failed -----"
+    cat "$log"
+    echo "----------------------------"
+    echo "[pre-commit] BLOCKED: fix the above, re-stage, and commit again."
+    rm -f "$log"
+    exit 1
+  fi
+  echo "[pre-commit] ${label}: ok"
+  rm -f "$log"
+}
+
+run_gate "go build ./..." go build ./...
+run_gate "go vet ./..." go vet ./...
+run_gate "go test ./... -cover" go test ./... -cover
