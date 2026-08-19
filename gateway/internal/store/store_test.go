@@ -215,6 +215,39 @@ func TestRecordOutcome_UnknownAlertIsNoop(t *testing.T) {
 	s.RecordOutcome(context.Background(), RunOutcome{AlertID: "ghost", Outcome: "MERGED"})
 }
 
+func TestRecordOutcome_DuplicateReportRejected(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	s.InsertRun(ctx, RunStart{AlertID: "a1", ServiceName: "svc", ReviMode: "PR_REVIEW"})
+
+	s.RecordOutcome(ctx, RunOutcome{
+		AlertID:   "a1",
+		Validated: true,
+		Outcome:   "PR_READY",
+		Summary:   "first, correct report",
+	})
+	first := fetch(t, s, "a1")
+
+	// A second report for the same alert_id — e.g. a redelivered dispatch,
+	// or (found 2026-08-19) a real hermes-triage.yml run colliding with a
+	// rehearsal against the same alert_id — must not overwrite the first
+	// recorded outcome.
+	s.RecordOutcome(ctx, RunOutcome{
+		AlertID:          "a1",
+		Outcome:          "FAILED",
+		EscalationReason: "EXHAUSTION",
+		Summary:          "second, should be rejected",
+	})
+	second := fetch(t, s, "a1")
+
+	if second.Outcome.String != first.Outcome.String || second.Outcome.String != "PR_READY" {
+		t.Errorf("duplicate report overwrote original outcome: got %+v, want unchanged from %+v", second, first)
+	}
+	if second.ValidatedAt.String != first.ValidatedAt.String {
+		t.Errorf("duplicate report changed validated_at: got %+v, want unchanged from %+v", second, first)
+	}
+}
+
 func TestNilStoreIsSafe(t *testing.T) {
 	var s *Store
 	s.InsertRun(context.Background(), RunStart{AlertID: "a1"})

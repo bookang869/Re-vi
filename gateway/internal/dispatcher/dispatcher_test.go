@@ -178,6 +178,88 @@ func TestRun_GivesUpAfterMaxAttempts(t *testing.T) {
 	}
 }
 
+// TestRun_SkipsDuplicateAlertID guards against the bug found 2026-08-19: a
+// redelivered message for an alert_id that was already successfully
+// dispatched (Gateway restart/slow-ack between Dispatch and Ack, or a second
+// alert let through by an expired flap lock) must not call
+// repository_dispatch a second time. Simulated here by publishing two
+// separate NATS messages carrying the same alert_id — from the dispatcher's
+// perspective this is indistinguishable from one message being redelivered.
+func TestRun_SkipsDuplicateAlertID(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	q, err := queue.ConnectTest(ctx, "nats://127.0.0.1:4222")
+	if err != nil {
+		t.Skipf("no local NATS reachable, skipping: %v", err)
+	}
+	defer q.Close()
+
+	var mu sync.Mutex
+	var gotBodies []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		mu.Lock()
+		gotBodies = append(gotBodies, body)
+		mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	gh := github.NewClient("test-token", "acme", "widgets")
+	gh.BaseURL = srv.URL
+
+	consumeCtx, err := Run(context.Background(), q, gh, "PR_REVIEW")
+	if err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+	defer consumeCtx.Stop()
+
+	a := alerts.Alert{
+		AlertID:      fmt.Sprintf("dup-test-%d", time.Now().UnixNano()),
+		Status:       "firing",
+		ServiceName:  "payment-processor",
+		TraceID:      "abc",
+		ErrorSummary: "boom",
+	}
+	payload, err := json.Marshal(a)
+	if err != nil {
+		t.Fatalf("marshal alert: %v", err)
+	}
+	// Publish the same alert_id twice, back to back.
+	for i := 0; i < 2; i++ {
+		if _, err := q.JS.Publish(context.Background(), q.AlertSubject, payload); err != nil {
+			t.Fatalf("publish alert (copy %d): %v", i, err)
+		}
+	}
+
+	countMatches := func() int {
+		n := 0
+		for _, body := range snapshot(&mu, &gotBodies) {
+			if cp, ok := body["client_payload"].(map[string]any); ok && cp["alert_id"] == a.AlertID {
+				n++
+			}
+		}
+		return n
+	}
+
+	// Wait for the first (legitimate) dispatch to land.
+	deadline := time.After(2 * time.Second)
+	for countMatches() < 1 {
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for the first repository_dispatch; saw %d", countMatches())
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+
+	// Give the duplicate copy a chance to (wrongly) trigger a second call.
+	time.Sleep(500 * time.Millisecond)
+	if got := countMatches(); got != 1 {
+		t.Errorf("got %d repository_dispatch calls for alert_id=%s, want exactly 1", got, a.AlertID)
+	}
+}
+
 func snapshot(mu *sync.Mutex, bodies *[]map[string]any) []map[string]any {
 	mu.Lock()
 	defer mu.Unlock()
