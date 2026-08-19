@@ -26,11 +26,16 @@ exist and have been verified end-to-end — both `PR_REVIEW` and `AUTONOMOUS`
 modes have live-tested runs (real `repository_dispatch` dispatches, real
 PRs/merges, real pages) against the companion repo,
 [`revi-hermes-target`](https://github.com/bookang869/revi-hermes-target),
-which holds `hermes-triage.yml`, the Hermes wrapper, and a fixture app
-standing in for "the production repo." Work has moved on to the Phase 6
-post-V1 backlog (re-provisioning a VPS, linter validation in Hermes's repair
-loop, lock-refresh-while-active testing, multi-language support, and more) —
-see [`docs/PLAN.md`](docs/PLAN.md) for the full list.
+which holds `hermes-triage.yml`, the Hermes wrapper, and fixture apps
+standing in for "the production repo." The repair loop's gate now covers
+Go, Rust, Node/TS, and Python — each with a build check, a lint pass
+(`go vet`/`cargo clippy`/`eslint`/`ruff`), sibling-test-file enforcement,
+and a test-quality check (the sibling test must fail against the pre-fix
+code and only pass with the fix applied, catching a vacuous test that
+would otherwise pass either way). Work has moved on to the rest of the
+Phase 6 post-V1 backlog (re-provisioning a VPS, lock-refresh-while-active
+testing, wiring in a real protected app, and more) — see
+[`docs/PLAN.md`](docs/PLAN.md) for the full list.
 
 [`docs/PRD.md`](docs/PRD.md) / [`docs/TRD.md`](docs/TRD.md) are living specs
 and remain the source of truth whenever this README, `diagram.md`, or
@@ -40,38 +45,51 @@ and remain the source of truth whenever this README, `diagram.md`, or
 
 ```mermaid
 flowchart TD
-    subgraph VPC["Production VPC"]
+    subgraph THISREPO["This repo (Re:vi) — observability stack + Gateway"]
         direction TB
-        App["Your App"] -->|OTLP/gRPC| Otel["OTel Collector"]
-        Otel -->|scrape| VM["VictoriaMetrics"]
-        Otel -->|logs| VL["VictoriaLogs"]
-        VM -->|evaluate| vmalert["vmalert"]
-        vmalert --> AM["Alertmanager"]
+        subgraph VPC["Production VPC"]
+            direction TB
+            App["Your App"] -->|OTLP/gRPC| Otel["OTel Collector"]
+            Otel -->|scrape| VM["VictoriaMetrics"]
+            Otel -->|logs| VL["VictoriaLogs"]
+            VM -->|evaluate| vmalert["vmalert"]
+            vmalert --> AM["Alertmanager"]
+        end
+
+        AM -->|webhook| GW["Go Ingestion Gateway"]
+        GW -.->|log context query| VL
+        GW --> NATS["NATS JetStream"]
     end
 
-    AM -->|webhook| GW["Go Ingestion Gateway"]
-    GW -.->|log context query| VL
-    GW --> NATS["NATS JetStream"]
+    NATS -->|repository_dispatch| GHA
 
-    subgraph RUNNER["GitHub Actions (ephemeral, isolation boundary)"]
+    subgraph TARGETREPO["Target repo (revi-hermes-target) — ephemeral GH Actions runner, isolation boundary"]
         direction TB
-        GHA["Runner: repository_dispatch"] --> Hermes["Hermes Agent"]
-        Hermes -->|PR_REVIEW| PR["Open PR on<br/>hermes/hotfix-*"]
-        Hermes -->|AUTONOMOUS| Merge["Smoke test + full suite<br/>→ merge to main"]
+        GHA["Runner: hermes-triage.yml"] --> Hermes["Hermes Agent"]
+        Hermes -->|PR_REVIEW| PR["Open PR on<br/>hermes/hotfix-*<br/>(target repo's main)"]
+        Hermes -->|"PR_REVIEW: 3 attempts<br/>fail to produce a patch"| Exhaustion["No PR opened<br/>(EXHAUSTION)"]
+        Hermes -->|AUTONOMOUS| Merge["Smoke test + full suite<br/>→ merge to target repo's main"]
     end
-
-    NATS --> GHA
 
     subgraph OUT["Outcomes"]
         direction TB
-        ESC["Escalation webhook<br/>(pages on-call)"]
+        ESC["Escalation webhook (Grafana OnCall)<br/>pages on-call"]
         Digest["Digest → Slack<br/>#triage-morning-review (08:00)"]
     end
 
-    PR --> ESC
-    Merge -->|failure| ESC
-    GHA -->|every run| Digest
+    PR -->|PR_READY| ESC
+    Exhaustion --> ESC
+    Merge -->|"boot failure / regression"| ESC
+    GHA -->|POST /v1/digest/entry, every run| GW
+    GW --> Digest
 ```
+
+The two subgraphs above are two different git repos: this repo hosts the
+observability stack and Gateway; `hermes-triage.yml`, the Hermes wrapper, and
+the app Hermes patches live in the companion
+[`revi-hermes-target`](https://github.com/bookang869/revi-hermes-target) repo
+(see Status above). The Gateway's `repository_dispatch` call reaches into
+that repo's Actions; PRs and merges land on *its* `main`, not this repo's.
 
 The Gateway (`gateway/`, a single Go binary) is one process with three jobs:
 
@@ -85,11 +103,12 @@ The Gateway (`gateway/`, a single Go binary) is one process with three jobs:
    `#triage-morning-review` at `REVI_DIGEST_TIME` (default 08:00).
 
 `repository_dispatch` triggers `hermes-triage.yml` on a fresh, ephemeral
-GitHub Actions runner — that ephemeral clone *is* the isolation boundary,
-there's no separate sandbox repo. The runner invokes Hermes, verifies the
-patch (compile, smoke test, existing suite), and either opens a PR or merges
-to `main`, per the mode above. Every run reports back to
-`POST /v1/digest/entry` regardless of outcome.
+GitHub Actions runner in the target repo — that ephemeral clone *is* the
+isolation boundary, there's no separate sandbox repo beyond it. The runner
+invokes Hermes, verifies the patch (compile, smoke test, existing suite),
+and either opens a PR or merges to the target repo's `main`, per the mode
+above. Every run reports back to this repo's `POST /v1/digest/entry`
+regardless of outcome.
 
 For the full request/response schemas, token scoping, and NATS key design,
 read TRD §2 and §4 before touching anything alert- or gateway-related — the
