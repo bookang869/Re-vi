@@ -28,12 +28,26 @@ var (
 	// dispatches happened for one alert_id (lock-TTL race, redelivered NATS
 	// message, or a test/rehearsal colliding with a real dispatch).
 	duplicateDigestEntries uint64
+
+	// duplicateDispatchesSkipped counts NATS messages the dispatcher
+	// declined to re-dispatch because their alert_id already had a
+	// dispatch marker (queue.TryMarkDispatched) — a redelivered message
+	// after a Gateway restart/slow-ack, or a second alert for the same
+	// alert_id let through by an expired flap lock. Should stay at 0 under
+	// normal operation.
+	duplicateDispatchesSkipped uint64
 )
 
 // IncDuplicateDigestEntries records one /v1/digest/entry report rejected by
 // store.RecordOutcome because the row already had a recorded outcome.
 func IncDuplicateDigestEntries() {
 	atomic.AddUint64(&duplicateDigestEntries, 1)
+}
+
+// IncDuplicateDispatchesSkipped records one repository_dispatch call skipped
+// by the dispatcher because the alert_id was already marked dispatched.
+func IncDuplicateDispatchesSkipped() {
+	atomic.AddUint64(&duplicateDispatchesSkipped, 1)
 }
 
 // IncAlertsReceived records one alert successfully accepted by /v1/alerts
@@ -73,4 +87,8 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "# HELP revi_duplicate_digest_entries_total Digest reports rejected because the alert_id already had a recorded outcome.\n")
 	fmt.Fprint(w, "# TYPE revi_duplicate_digest_entries_total counter\n")
 	fmt.Fprintf(w, "revi_duplicate_digest_entries_total %d\n", atomic.LoadUint64(&duplicateDigestEntries))
+
+	fmt.Fprint(w, "# HELP revi_duplicate_dispatches_skipped_total repository_dispatch calls skipped because the alert_id was already marked dispatched.\n")
+	fmt.Fprint(w, "# TYPE revi_duplicate_dispatches_skipped_total counter\n")
+	fmt.Fprintf(w, "revi_duplicate_dispatches_skipped_total %d\n", atomic.LoadUint64(&duplicateDispatchesSkipped))
 }

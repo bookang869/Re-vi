@@ -6,6 +6,7 @@ package dispatcher
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -58,6 +59,27 @@ func Run(ctx context.Context, q *queue.Queue, gh *github.Client, mode string) (j
 			return
 		}
 
+		// Idempotency guard (2026-08-19, found during Part A rehearsal
+		// testing): a redelivery of this same message -- Gateway restart or
+		// slow ack between a successful Dispatch and Ack, or a second alert
+		// for this alert_id let through by an expired flap lock -- must not
+		// call repository_dispatch a second time. The marker is claimed
+		// before dispatching and only rolled back if Dispatch itself fails,
+		// so it only ever survives a genuinely successful dispatch.
+		markerValue := []byte(fmt.Sprintf(`{"alert_id":%q,"dispatched_at":%q}`, a.AlertID, time.Now().UTC().Format(time.RFC3339)))
+		alreadyDispatched, err := q.TryMarkDispatched(ctx, a.AlertID, markerValue)
+		if err != nil {
+			log.Printf("dispatcher: mark-dispatched check failed for %s, will retry: %v", a.AlertID, err)
+			msg.NakWithDelay(dispatchRetryDelay)
+			return
+		}
+		if alreadyDispatched {
+			log.Printf("dispatcher: skipping repository_dispatch for %s -- already dispatched", a.AlertID)
+			metrics.IncDuplicateDispatchesSkipped()
+			msg.Ack()
+			return
+		}
+
 		payload := clientPayload{
 			Mode:         mode,
 			AlertID:      a.AlertID,
@@ -67,6 +89,11 @@ func Run(ctx context.Context, q *queue.Queue, gh *github.Client, mode string) (j
 			LogContext:   a.LogContext,
 		}
 		if err := gh.Dispatch(ctx, eventType, payload); err != nil {
+			if unmarkErr := q.UnmarkDispatched(ctx, a.AlertID); unmarkErr != nil {
+				// Bounded by dispatchedTTL (24h), not silent: worst case
+				// this alert_id can't be retried until the marker expires.
+				log.Printf("dispatcher: failed to roll back dispatch marker for %s after a failed dispatch -- retries blocked until the marker expires: %v", a.AlertID, unmarkErr)
+			}
 			if md, mderr := msg.Metadata(); mderr == nil && md.NumDelivered >= maxDispatchAttempts {
 				log.Printf("dispatcher: giving up on %s after %d attempts: %v", a.AlertID, md.NumDelivered, err)
 				msg.Term()
