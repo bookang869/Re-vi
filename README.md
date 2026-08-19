@@ -61,9 +61,7 @@ flowchart TD
         GW --> NATS["NATS JetStream"]
     end
 
-    NATS -->|repository_dispatch| GHA
-
-    subgraph TARGETREPO["Target repo (revi-hermes-target) — ephemeral GH Actions runner, isolation boundary"]
+    subgraph TARGETREPO["Target repo (revi-hermes-target)"]
         direction TB
         GHA["Runner: hermes-triage.yml"] --> Hermes["Hermes Agent"]
         Hermes -->|PR_REVIEW| PR["Open PR on<br/>hermes/hotfix-*<br/>(target repo's main)"]
@@ -71,16 +69,19 @@ flowchart TD
         Hermes -->|AUTONOMOUS| Merge["Smoke test + full suite<br/>→ merge to target repo's main"]
     end
 
+    NATS -->|repository_dispatch| GHA
+    GHA -->|"POST /v1/digest/entry<br/>every run"| GW
+
     subgraph OUT["Outcomes"]
         direction TB
         ESC["Escalation webhook (Grafana OnCall)<br/>pages on-call"]
-        Digest["Gateway POST /v1/digest/entry<br/>→ Slack #triage-morning-review<br/>(08:00, every run)"]
+        Digest["Digest → Slack<br/>#triage-morning-review (08:00)"]
     end
 
     PR -->|PR_READY| ESC
     Exhaustion --> ESC
     Merge -->|"boot failure / regression"| ESC
-    GHA --> Digest
+    GW --> Digest
 ```
 
 The two subgraphs above are two different git repos: this repo hosts the
