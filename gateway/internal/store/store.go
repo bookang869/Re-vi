@@ -16,6 +16,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/bookang869/Re-vi/gateway/internal/metrics"
 	_ "modernc.org/sqlite"
 )
 
@@ -159,8 +160,25 @@ func (s *Store) RecordOutcome(ctx context.Context, o RunOutcome) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	var storedMode string
-	if err := s.db.QueryRowContext(ctx, `SELECT revi_mode FROM runs WHERE alert_id = ?`, o.AlertID).Scan(&storedMode); err != nil && err != sql.ErrNoRows {
-		log.Printf("store: looking up revi_mode for %s failed: %v", o.AlertID, err)
+	var existingOutcome sql.NullString
+	if err := s.db.QueryRowContext(ctx, `SELECT revi_mode, outcome FROM runs WHERE alert_id = ?`, o.AlertID).Scan(&storedMode, &existingOutcome); err != nil && err != sql.ErrNoRows {
+		log.Printf("store: looking up revi_mode/outcome for %s failed: %v", o.AlertID, err)
+	}
+
+	// A non-NULL outcome means some earlier call already recorded a real
+	// result for this alert_id (outcome is only ever set here, never by
+	// InsertRun). A second report for the same alert_id means two
+	// independent dispatches happened for what should have been one
+	// genuinely new alert — a lock-TTL race, a redelivered NATS message,
+	// or (as found 2026-08-19) a manual test seeding a row through the
+	// real /v1/alerts path while also running a rehearsal against the same
+	// alert_id. Whatever the cause, the first recorded outcome wins; this
+	// is a signal to surface loudly, not data to silently merge or let the
+	// last write clobber.
+	if existingOutcome.Valid {
+		log.Printf("store: duplicate digest entry for alert_id %s ignored -- existing outcome=%q, incoming outcome=%q", o.AlertID, existingOutcome.String, o.Outcome)
+		metrics.IncDuplicateDigestEntries()
+		return
 	}
 
 	var validatedAt, mergedAt any

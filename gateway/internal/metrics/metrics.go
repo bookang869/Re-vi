@@ -20,7 +20,21 @@ var (
 	// exist in this repo yet. Exposed at a constant 0 until that phase adds
 	// an increment call, wired through /v1/digest/entry's outcome field.
 	smokeFailures uint64
+
+	// duplicateDigestEntries counts /v1/digest/entry reports rejected
+	// because the target alert_id already had a recorded outcome (store.
+	// RecordOutcome) -- see docs/observability-part-a.md. Should stay at 0
+	// under normal operation; a nonzero value means two independent
+	// dispatches happened for one alert_id (lock-TTL race, redelivered NATS
+	// message, or a test/rehearsal colliding with a real dispatch).
+	duplicateDigestEntries uint64
 )
+
+// IncDuplicateDigestEntries records one /v1/digest/entry report rejected by
+// store.RecordOutcome because the row already had a recorded outcome.
+func IncDuplicateDigestEntries() {
+	atomic.AddUint64(&duplicateDigestEntries, 1)
+}
 
 // IncAlertsReceived records one alert successfully accepted by /v1/alerts
 // (TRD "revi.alert.received": fired on successful webhook entry processing).
@@ -55,4 +69,8 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "# HELP revi_synthetic_smoke_failures_total Autonomous-mode boot crashes caught by synthetic smoke testing.\n")
 	fmt.Fprint(w, "# TYPE revi_synthetic_smoke_failures_total counter\n")
 	fmt.Fprintf(w, "revi_synthetic_smoke_failures_total %d\n", atomic.LoadUint64(&smokeFailures))
+
+	fmt.Fprint(w, "# HELP revi_duplicate_digest_entries_total Digest reports rejected because the alert_id already had a recorded outcome.\n")
+	fmt.Fprint(w, "# TYPE revi_duplicate_digest_entries_total counter\n")
+	fmt.Fprintf(w, "revi_duplicate_digest_entries_total %d\n", atomic.LoadUint64(&duplicateDigestEntries))
 }
