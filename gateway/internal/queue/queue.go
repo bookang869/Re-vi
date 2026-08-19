@@ -33,13 +33,22 @@ const (
 	TestDigestBucket     = "digest-test"
 	TestDispatchedBucket = "dispatched-test"
 
-	// lockTTL is fixed, not refreshed while a repair is in progress —
-	// an accepted risk (TRD Sec 6), not a bug to fix here. It protects a
-	// different thing than dispatchedTTL below: lockTTL rate-limits new
-	// alerts for the same (service, error) pair; dispatchedTTL de-dupes
-	// repeat dispatch attempts for one specific alert_id (2026-08-19,
-	// found during Part A rehearsal testing — see dispatched.go).
-	lockTTL = 30 * time.Minute
+	// lockTTL is a backstop, not the primary release mechanism (changed
+	// 2026-08-19 -- was 30min and the sole mechanism, TRD Sec 6's original
+	// "accepted risk"). The lock is now released the moment a run's final
+	// report arrives (digest.NewHandler's release-on-completion), whether
+	// that run succeeded or failed; this TTL only matters if that report
+	// never arrives at all (crashed runner, cancelled workflow, tunnel
+	// down). 4h comfortably outlasts even a slow real AUTONOMOUS run
+	// (diagnosis + up to 3 attempts + smoke + full regression suite) while
+	// still bounding how long a genuinely stuck lock can block retries.
+	//
+	// It protects a different thing than dispatchedTTL below: lockTTL
+	// rate-limits new alerts for the same (service, error) pair;
+	// dispatchedTTL de-dupes repeat dispatch attempts for one specific
+	// alert_id (2026-08-19, found during Part A rehearsal testing — see
+	// dispatched.go).
+	lockTTL = 4 * time.Hour
 
 	// dispatchedTTL bounds how long a "this alert_id was already
 	// dispatched" marker survives — long enough to safely outlast any

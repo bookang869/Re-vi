@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -32,6 +33,16 @@ type entry struct {
 	Outcome    string `json:"outcome"`
 	Summary    string `json:"summary"`
 	DigestDate string `json:"digest_date"`
+
+	// ServiceName/ErrorSummary identify which flap lock (queue.LockKey) this
+	// run held, so the Gateway can release it the moment the run genuinely
+	// finishes instead of waiting on the lock's own TTL (2026-08-19,
+	// release-on-completion — see releaseLock below). Both are already on
+	// hand in the runner the whole time (SERVICE_NAME/ERROR_SUMMARY env
+	// vars), so this is just including values that already exist, not new
+	// plumbing on the runner side.
+	ServiceName  string `json:"service_name"`
+	ErrorSummary string `json:"error_summary"`
 
 	Validated             bool     `json:"validated"`
 	Merged                bool     `json:"merged"`
@@ -78,6 +89,18 @@ func NewHandler(secret string, q *queue.Queue, runStore *store.Store) http.Handl
 		if err := q.UpsertDigestEntry(r.Context(), e.DigestDate, e.AlertID, record); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
+		}
+
+		// Release-on-completion (2026-08-19): the run genuinely finished —
+		// success or failure, doesn't matter — so the flap lock no longer
+		// needs to wait out its own TTL. Best-effort: an old runner that
+		// hasn't been updated to send these fields yet, or a delete that
+		// fails, just falls back to the TTL backstop rather than blocking
+		// this response.
+		if e.ServiceName != "" && e.ErrorSummary != "" {
+			if err := q.Locks.Delete(r.Context(), queue.LockKey(e.ServiceName, e.ErrorSummary)); err != nil {
+				log.Printf("digest: failed to release flap lock for alert_id=%s service=%s: %v (will fall back to TTL)", e.AlertID, e.ServiceName, err)
+			}
 		}
 
 		runStore.RecordOutcome(r.Context(), store.RunOutcome{

@@ -24,10 +24,11 @@ func LockKey(serviceName, errorSummary string) string {
 // alreadyLocked=true means a repair is already in flight and the caller
 // must halt, not dispatch again.
 //
-// The lock is only ever Created, never Updated: its TTL is fixed at
-// bucket-creation time (see Connect) and deliberately not refreshed while a
-// repair runs — TRD Sec 6 accepts that risk rather than adding refresh
-// logic.
+// The lock is normally released early by digest.NewHandler the moment a
+// run's final report arrives (2026-08-19, release-on-completion), not by
+// waiting out its TTL — see lockTTL's comment in queue.go. TryLock itself
+// only ever Creates, never Updates; releasing is handled separately via
+// q.Locks.Delete(ctx, LockKey(...)).
 func (q *Queue) TryLock(ctx context.Context, serviceName, errorSummary string, value []byte) (alreadyLocked bool, err error) {
 	_, err = q.Locks.Create(ctx, LockKey(serviceName, errorSummary), value)
 	switch {

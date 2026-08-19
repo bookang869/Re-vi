@@ -61,10 +61,11 @@ func Publish(ctx context.Context, q *queue.Queue, logsClient *victorialogs.Clien
 	}
 	if _, err := q.JS.Publish(ctx, q.AlertSubject, payload); err != nil {
 		// ponytail: the lock is already set at this point; a publish
-		// failure here leaves the alert stuck until the 30-min TTL
-		// expires. Add a rollback (delete the lock) if this proves to
-		// happen in practice — TRD Sec 6 only accepts the no-refresh
-		// risk, not this one.
+		// failure here leaves the alert stuck until the lock's TTL
+		// (queue.go, backstop only since 2026-08-19's release-on-completion
+		// change) expires -- no run ever started here, so there's no final
+		// report to release it early. Add a rollback (delete the lock) if
+		// this proves to happen in practice.
 		return false, fmt.Errorf("publish alert: %w", err)
 	}
 	return true, nil

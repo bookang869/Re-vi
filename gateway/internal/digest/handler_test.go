@@ -144,3 +144,49 @@ func TestHandler_ValidEntry(t *testing.T) {
 		t.Errorf("unexpected stored fields: outcome=%v model=%v attempts=%v", outcome, model, attempts)
 	}
 }
+
+// TestHandler_ReleasesLockOnCompletion covers release-on-completion
+// (2026-08-19): a run's final report must take its flap lock down
+// immediately rather than leaving it to the TTL backstop, so a genuinely
+// new alert for the same (service, error) isn't blocked from starting a
+// fresh repair long after this run actually finished.
+func TestHandler_ReleasesLockOnCompletion(t *testing.T) {
+	q := testQueue(t)
+	s := testStore(t)
+	alertID := fmt.Sprintf("release-test-%d", time.Now().UnixNano())
+	serviceName := "payment-processor"
+	errorSummary := "nil pointer in Summarize"
+	s.InsertRun(context.Background(), store.RunStart{AlertID: alertID, ServiceName: serviceName, ReviMode: "PR_REVIEW"})
+
+	alreadyLocked, err := q.TryLock(context.Background(), serviceName, errorSummary, []byte("held"))
+	if err != nil {
+		t.Fatalf("TryLock() error: %v", err)
+	}
+	if alreadyLocked {
+		t.Fatal("lock should not already be held at test start")
+	}
+
+	digestDate := fmt.Sprintf("test-%d", time.Now().UnixNano())
+	body, err := json.Marshal(entry{
+		AlertID:      alertID,
+		ReviMode:     "PR_REVIEW",
+		Outcome:      "PR_READY",
+		Summary:      "fixed it",
+		DigestDate:   digestDate,
+		Validated:    true,
+		ServiceName:  serviceName,
+		ErrorSummary: errorSummary,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := doRequest(t, q, s, string(body), sign(string(body)))
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("got %d, want 202", rec.Code)
+	}
+
+	if _, err := q.Locks.Get(context.Background(), queue.LockKey(serviceName, errorSummary)); err == nil {
+		t.Error("lock should have been released after the final report, but is still held")
+	}
+}
