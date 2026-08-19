@@ -61,7 +61,7 @@ flowchart TD
         GW --> NATS["NATS JetStream"]
     end
 
-    subgraph TARGETREPO["Target repo (revi-hermes-target)"]
+    subgraph TARGETREPO["Target repo"]
         direction TB
         GHA["Runner: hermes-triage.yml"] --> Hermes["Hermes Agent"]
         Hermes -->|PR_REVIEW| PR["Open PR on<br/>hermes/hotfix-*<br/>(target repo's main)"]
