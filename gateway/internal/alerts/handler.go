@@ -8,13 +8,16 @@ import (
 
 	"github.com/bookang869/Re-vi/gateway/internal/metrics"
 	"github.com/bookang869/Re-vi/gateway/internal/queue"
+	"github.com/bookang869/Re-vi/gateway/internal/store"
 	"github.com/bookang869/Re-vi/gateway/internal/victorialogs"
 )
 
 // NewHandler returns the /v1/alerts handler. secret is REVI_WEBHOOK_SECRET;
 // requests must carry it as "Authorization: Bearer <secret>". mode is the
 // Gateway's own REVI_MODE, stamped into the lock record for visibility.
-func NewHandler(secret string, q *queue.Queue, logsClient *victorialogs.Client, mode string) http.HandlerFunc {
+// runStore may be nil (observability writes are best-effort, never block
+// alert processing — docs/observability-part-a.md).
+func NewHandler(secret string, q *queue.Queue, logsClient *victorialogs.Client, mode string, runStore *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !validBearer(r.Header.Get("Authorization"), secret) {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -53,6 +56,11 @@ func NewHandler(secret string, q *queue.Queue, logsClient *victorialogs.Client, 
 			}
 			if ok {
 				published++
+				runStore.InsertRun(r.Context(), store.RunStart{
+					AlertID:     a.AlertID,
+					ServiceName: a.ServiceName,
+					ReviMode:    mode,
+				})
 			}
 		}
 

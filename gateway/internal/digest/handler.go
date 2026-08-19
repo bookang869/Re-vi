@@ -16,22 +16,42 @@ import (
 	"time"
 
 	"github.com/bookang869/Re-vi/gateway/internal/queue"
+	"github.com/bookang869/Re-vi/gateway/internal/store"
 )
 
-// entry is the runner's POST body (TRD Sec 4).
+// entry is the runner's POST body (TRD Sec 4, extended by
+// docs/observability-part-a.md). Validated/Merged are explicit booleans
+// rather than something inferred from Outcome/EscalationReason's free-form
+// strings, so the Gateway can stamp validated_at/merged_at unambiguously —
+// see store.RunOutcome. Attempts/InputTokens/OutputTokens/EstimatedCost are
+// pointers so an omitted field (e.g. token/cost data the wrapper script
+// doesn't collect yet) is stored as SQL NULL, not a misleading literal 0.
 type entry struct {
 	AlertID    string `json:"alert_id"`
 	ReviMode   string `json:"revi_mode"`
 	Outcome    string `json:"outcome"`
 	Summary    string `json:"summary"`
 	DigestDate string `json:"digest_date"`
+
+	Validated             bool     `json:"validated"`
+	Merged                bool     `json:"merged"`
+	EscalationReason      string   `json:"escalation_reason"`
+	Attempts              *int     `json:"attempts,omitempty"`
+	FailureStage          string   `json:"failure_stage"`
+	FailureClassification string   `json:"failure_classification"`
+	InputTokens           *int     `json:"input_tokens,omitempty"`
+	OutputTokens          *int     `json:"output_tokens,omitempty"`
+	Model                 string   `json:"model"`
+	EstimatedCost         *float64 `json:"estimated_cost,omitempty"`
 }
 
 // NewHandler returns the /v1/digest/entry handler. secret is
 // REVI_WEBHOOK_SECRET, reused here as the HMAC key (Bearer token for
 // /v1/alerts, HMAC for this endpoint — deliberately different schemes
-// matching what each caller can produce, TRD Sec 5).
-func NewHandler(secret string, q *queue.Queue) http.HandlerFunc {
+// matching what each caller can produce, TRD Sec 5). runStore may be nil
+// (observability writes are best-effort, never block digest recording —
+// docs/observability-part-a.md).
+func NewHandler(secret string, q *queue.Queue, runStore *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -59,6 +79,22 @@ func NewHandler(secret string, q *queue.Queue) http.HandlerFunc {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+
+		runStore.RecordOutcome(r.Context(), store.RunOutcome{
+			AlertID:               e.AlertID,
+			Validated:             e.Validated,
+			Merged:                e.Merged,
+			Outcome:               e.Outcome,
+			EscalationReason:      e.EscalationReason,
+			Attempts:              e.Attempts,
+			FailureStage:          e.FailureStage,
+			FailureClassification: e.FailureClassification,
+			InputTokens:           e.InputTokens,
+			OutputTokens:          e.OutputTokens,
+			Model:                 e.Model,
+			EstimatedCost:         e.EstimatedCost,
+			Summary:               e.Summary,
+		})
 
 		w.WriteHeader(http.StatusAccepted)
 	}

@@ -31,6 +31,8 @@ type Config struct {
 
 	VictoriaLogsURL string // REVI_VICTORIALOGS_URL
 	NATSURL         string // REVI_NATS_URL
+
+	SQLitePath string // REVI_SQLITE_PATH: embedded per-run history DB (docs/observability-part-a.md)
 }
 
 // Load reads configuration from the environment. It only errors on values
@@ -54,6 +56,8 @@ func Load() (Config, error) {
 
 		VictoriaLogsURL: getEnvDefault("REVI_VICTORIALOGS_URL", "http://victoria-logs:9428"),
 		NATSURL:         getEnvDefault("REVI_NATS_URL", "nats://nats:4222"),
+
+		SQLitePath: getEnvDefault("REVI_SQLITE_PATH", "/data/revi.db"),
 	}
 
 	if cfg.WebhookSecret == "" {

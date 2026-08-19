@@ -8,6 +8,7 @@ services:
     image: otel/opentelemetry-collector-contrib:0.95.0
     container_name: revi-otel-collector
     restart: always
+    mem_limit: 128m
     volumes:
       - ./otel-config.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
@@ -24,6 +25,7 @@ services:
     image: victoriametrics/victoria-metrics:v1.99.0
     container_name: revi-victoria-metrics
     restart: always
+    mem_limit: 256m
     volumes:
       - vm-data:/victoria-metrics-data
       - ./vm-scrape.yml:/etc/victoriametrics/vm-scrape.yml:ro
@@ -43,6 +45,7 @@ services:
     image: nats:2.10-alpine
     container_name: revi-nats-queue
     restart: always
+    mem_limit: 128m
     ports:
       - "4222:4222"   # NATS client connections
       - "8222:8222"   # HTTP Monitoring server console
@@ -60,6 +63,7 @@ services:
     image: victoriametrics/victoria-logs:v1.52.0
     container_name: revi-victoria-logs
     restart: always
+    mem_limit: 256m
     volumes:
       - vl-data:/victoria-logs-data
     ports:
@@ -76,6 +80,7 @@ services:
     image: victoriametrics/vmalert:v1.99.0
     container_name: revi-vmalert
     restart: always
+    mem_limit: 128m
     volumes:
       - ./vmalert-rules.yml:/etc/vmalert/rules.yml:ro
     command:
@@ -96,6 +101,7 @@ services:
     image: prom/alertmanager:v0.27.0
     container_name: revi-alertmanager
     restart: always
+    mem_limit: 128m
     volumes:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       # Operator-provided file containing REVI_WEBHOOK_SECRET's value, not committed to git.
@@ -113,6 +119,7 @@ services:
     build: ./gateway
     container_name: revi-gateway
     restart: always
+    mem_limit: 128m
     ports:
       - "8080:8080"   # Alertmanager -> /v1/alerts, GHA runner -> /v1/digest/entry, VM -> /metrics
     environment:
@@ -125,6 +132,9 @@ services:
       SLACK_DIGEST_WEBHOOK_URL: ${SLACK_DIGEST_WEBHOOK_URL:-}
       REVI_ESCALATION_WEBHOOK_URL: ${REVI_ESCALATION_WEBHOOK_URL:-}
       REVI_ESCALATION_WEBHOOK_SECRET: ${REVI_ESCALATION_WEBHOOK_SECRET:-}
+      REVI_SQLITE_PATH: /data/revi.db
+    volumes:
+      - gateway-data:/data
     networks:
       - revi-network
     depends_on:
@@ -141,6 +151,7 @@ services:
     container_name: revi-tailscale
     hostname: revi-gateway
     restart: always
+    mem_limit: 128m
     environment:
       TS_AUTHKEY: ${TS_AUTHKEY:?set in .env or the shell environment}
       TS_HOSTNAME: revi-gateway
@@ -161,6 +172,8 @@ volumes:
   vl-data:
     driver: local
   nats-data:
+    driver: local
+  gateway-data:
     driver: local
 
 networks:

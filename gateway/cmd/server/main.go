@@ -15,6 +15,7 @@ import (
 	"github.com/bookang869/Re-vi/gateway/internal/metrics"
 	"github.com/bookang869/Re-vi/gateway/internal/queue"
 	"github.com/bookang869/Re-vi/gateway/internal/slack"
+	"github.com/bookang869/Re-vi/gateway/internal/store"
 	"github.com/bookang869/Re-vi/gateway/internal/victorialogs"
 )
 
@@ -23,6 +24,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
+
+	runStore, err := store.Open(cfg.SQLitePath)
+	if err != nil {
+		log.Fatalf("store: %v", err)
+	}
+	defer runStore.Close()
+	log.Printf("store: opened %s", cfg.SQLitePath)
 
 	connectCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	q, err := queue.Connect(connectCtx, cfg.NATSURL)
@@ -51,8 +59,8 @@ func main() {
 	})
 	mux.HandleFunc("/metrics", metrics.Handler)
 	logsClient := victorialogs.NewClient(cfg.VictoriaLogsURL)
-	mux.HandleFunc("/v1/alerts", alerts.NewHandler(cfg.WebhookSecret, q, logsClient, cfg.Mode))
-	mux.HandleFunc("/v1/digest/entry", digest.NewHandler(cfg.WebhookSecret, q))
+	mux.HandleFunc("/v1/alerts", alerts.NewHandler(cfg.WebhookSecret, q, logsClient, cfg.Mode, runStore))
+	mux.HandleFunc("/v1/digest/entry", digest.NewHandler(cfg.WebhookSecret, q, runStore))
 
 	log.Printf("gateway listening on %s (mode=%s)", cfg.ListenAddr, cfg.Mode)
 	if err := http.ListenAndServe(cfg.ListenAddr, mux); err != nil {
