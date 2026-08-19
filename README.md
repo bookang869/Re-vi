@@ -45,43 +45,87 @@ and remain the source of truth whenever this README, `diagram.md`, or
 
 ```mermaid
 flowchart TD
+
+    %% =========================
+    %% 1. CRASH + OBSERVABILITY
+    %% =========================
     subgraph THISREPO["This repo (Re:vi) — observability stack + Gateway"]
         direction TB
+
         subgraph VPC["Production VPC"]
             direction TB
-            App["Your App"] -->|OTLP/gRPC| Otel["OTel Collector"]
-            Otel -->|scrape| VM["VictoriaMetrics"]
-            Otel -->|logs| VL["VictoriaLogs"]
-            VM -->|evaluate| vmalert["vmalert"]
-            vmalert --> AM["Alertmanager"]
+
+            Crash["💥 App Crash"]
+            App["Your App"]
+            Otel["OTel Collector"]
+            VM["VictoriaMetrics"]
+            VL["VictoriaLogs"]
+            vmalert["vmalert"]
+            AM["Alertmanager"]
+
+            Crash --> App
+            App -->|OTLP/gRPC| Otel
+
+            Otel -->|metrics| VM
+            Otel -->|logs| VL
+
+            VM -->|evaluate| vmalert
+            vmalert --> AM
         end
 
-        AM -->|webhook| GW["Go Ingestion Gateway"]
-        GW -.->|log context query| VL
-        GW --> NATS["NATS JetStream"]
+        GW["Go Ingestion Gateway"]
+        NATS["NATS JetStream"]
+
+        AM -->|webhook| GW
+        GW -.->|query log context| VL
+        GW --> NATS
     end
 
-    subgraph TARGETREPO["Target repo"]
+
+    %% =========================
+    %% 2. HERMES RUNNER
+    %% =========================
+    subgraph TARGETREPO["Target repo (revi-hermes-target)"]
         direction TB
-        GHA["Runner: hermes-triage.yml"] --> Hermes["Hermes Agent"]
-        Hermes -->|PR_REVIEW| PR["Open PR on<br/>hermes/hotfix-*<br/>(target repo's main)"]
-        Hermes -->|"PR_REVIEW: 3 attempts<br/>fail to produce a patch"| Exhaustion["No PR opened<br/>(EXHAUSTION)"]
-        Hermes -->|AUTONOMOUS| Merge["Smoke test + full suite<br/>→ merge to target repo's main"]
+
+        GHA["Runner<br/>hermes-triage.yml"]
+        Hermes["Hermes Agent"]
+
+        GHA --> Hermes
+
+        PR["Open PR<br/>hermes/hotfix-*"]
+        Exhaustion["No PR opened<br/>(EXHAUSTION)"]
+        Merge["Smoke test + full suite<br/>→ merge to main"]
+
+        Hermes -->|PR_REVIEW successful| PR
+        Hermes -->|"PR_REVIEW<br/>3 failed attempts"| Exhaustion
+        Hermes -->|AUTONOMOUS| Merge
     end
 
     NATS -->|repository_dispatch| GHA
-    GHA -->|"POST /v1/digest/entry<br/>every run"| GW
 
+
+    %% =========================
+    %% 3. OUTCOMES
+    %% =========================
     subgraph OUT["Outcomes"]
         direction TB
-        ESC["Escalation webhook (Grafana OnCall)<br/>pages on-call"]
-        Digest["Digest → Slack<br/>#triage-morning-review (08:00)"]
+
+        ESC["Escalation webhook<br/>(Grafana OnCall)<br/>pages on-call"]
+
+        Digest["Digest → Slack<br/>#triage-morning-review<br/>(08:00)"]
     end
 
     PR -->|PR_READY| ESC
-    Exhaustion --> ESC
+    Exhaustion -->|EXHAUSTION| ESC
     Merge -->|"boot failure / regression"| ESC
-    GW --> Digest
+
+
+    %% =========================
+    %% SECONDARY / FEEDBACK PATHS
+    %% =========================
+    GHA -.->|"POST /v1/digest/entry<br/>every run"| GW
+    GW -.-> Digest
 ```
 
 The two subgraphs above are two different git repos: this repo hosts the
