@@ -36,6 +36,29 @@ type Alert struct {
 	FaultType        string `json:"fault_type,omitempty"`
 	LanguageRuntime  string `json:"language_runtime,omitempty"`
 	ExpectedBehavior string `json:"expected_behavior,omitempty"`
+
+	// Benchmark-only dispatch routing (docs/observability-part-b.md "Locked:
+	// verifier isolation" grilling session, 2026-08-20). Unlike the fields
+	// above, these two flow all the way into client_payload -- the runner
+	// needs them, not just the Gateway's own SQLite record. Empty on every
+	// real alert, which is a no-op end to end: hermes-triage.yml's checkout
+	// treats an empty ref as "use the default branch" (unchanged behavior),
+	// and autonomous-promote.sh treats an empty merge target as "main"
+	// (unchanged behavior).
+	//
+	// Ref is the fixed base_ref tag to check out instead of main -- set to
+	// the same tag on every trial of a fault, including repeats, per the
+	// "clean baseline" rule (never re-derived from main at trial time).
+	//
+	// MergeTarget is a per-fault integration branch (not main) that the
+	// harness resets to Ref before every trial. Necessary because repeat
+	// trials of the same fault each write an independent fix starting from
+	// the same still-broken baseline; merging trial 2's fix into a main that
+	// already has trial 1's differently-worded fix on the same lines is a
+	// near-guaranteed git conflict that would misreport as "Hermes failed"
+	// rather than "trials collided with each other."
+	Ref         string `json:"ref,omitempty"`
+	MergeTarget string `json:"merge_target,omitempty"`
 }
 
 // invalidAlert records why a single firing alert within a batch was
@@ -98,6 +121,9 @@ func mapAlerts(payload webhookPayload) (fired []Alert, droppedCount int, invalid
 			FaultType:        raw.Labels["fault_type"],
 			LanguageRuntime:  raw.Labels["language_runtime"],
 			ExpectedBehavior: raw.Annotations["expected_behavior"],
+
+			Ref:         raw.Labels["ref"],
+			MergeTarget: raw.Labels["merge_target"],
 		})
 	}
 	return fired, droppedCount, invalid

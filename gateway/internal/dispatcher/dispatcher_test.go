@@ -58,6 +58,8 @@ func TestRun_DispatchesPublishedAlert(t *testing.T) {
 		TraceID:      "abc",
 		ErrorSummary: "boom",
 		LogContext:   "line1\nline2",
+		Ref:          "fault/go-nil-deref-01-base",
+		MergeTarget:  "benchmark/go-nil-deref-01",
 	}
 	payload, err := json.Marshal(a)
 	if err != nil {
@@ -88,6 +90,12 @@ func TestRun_DispatchesPublishedAlert(t *testing.T) {
 			}
 			if cp["log_context"] != a.LogContext {
 				t.Errorf("log_context = %v, want %v", cp["log_context"], a.LogContext)
+			}
+			if cp["ref"] != a.Ref {
+				t.Errorf("ref = %v, want %v", cp["ref"], a.Ref)
+			}
+			if cp["merge_target"] != a.MergeTarget {
+				t.Errorf("merge_target = %v, want %v", cp["merge_target"], a.MergeTarget)
 			}
 			return
 		}

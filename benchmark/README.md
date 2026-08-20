@@ -33,6 +33,21 @@ new one.
 benchmark *run* (e.g. one full 96-trial pass), not a fault, so the harness
 assigns it at dispatch time.
 
+## Dispatching a trial
+
+Two more fields ride along on the synthetic alert itself (`labels.ref`,
+`labels.merge_target`), not stored in `meta.json` since they're derived,
+not authored — see docs/observability-part-b.md "Locked: dispatch routing
+to a fault's isolated ref" for the full story of why these exist:
+
+- **`ref` = this fault's `base_ref`, unchanged, every trial.** Tells the
+  runner to check out the fault's fixed tag instead of `main`.
+- **`merge_target` = `benchmark/<fault_id>`.** Before dispatching *any*
+  trial (including repeats), the harness must force-reset this branch to
+  `base_ref` on the remote — it's what `autonomous-promote.sh` merges into
+  instead of `main`, so repeat trials never collide with each other's
+  independently-worded fixes to the same lines.
+
 ## `verify.sh`
 
 Contract: `verify.sh <path-to-checked-out-revi-hermes-target>`. Exit code is

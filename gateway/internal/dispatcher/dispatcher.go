@@ -38,6 +38,10 @@ var dispatchRetryDelay = 30 * time.Second
 // mode is the Gateway's own REVI_MODE (already normalized to PR_REVIEW or
 // AUTONOMOUS by config.Load), stamped here rather than looked up as a
 // GitHub secret (TRD FR-01).
+//
+// Ref/MergeTarget are benchmark-only dispatch routing (docs/observability-
+// part-b.md), empty on every real alert -- see alerts.Alert's doc comment
+// for why they exist and why empty is a safe no-op end to end.
 type clientPayload struct {
 	Mode         string `json:"mode"`
 	AlertID      string `json:"alert_id"`
@@ -45,6 +49,8 @@ type clientPayload struct {
 	TraceID      string `json:"trace_id"`
 	ErrorSummary string `json:"error_summary"`
 	LogContext   string `json:"log_context"`
+	Ref          string `json:"ref,omitempty"`
+	MergeTarget  string `json:"merge_target,omitempty"`
 }
 
 // Run starts the durable consumer. It blocks only long enough to attach the
@@ -87,6 +93,8 @@ func Run(ctx context.Context, q *queue.Queue, gh *github.Client, mode string) (j
 			TraceID:      a.TraceID,
 			ErrorSummary: a.ErrorSummary,
 			LogContext:   a.LogContext,
+			Ref:          a.Ref,
+			MergeTarget:  a.MergeTarget,
 		}
 		if err := gh.Dispatch(ctx, eventType, payload); err != nil {
 			if unmarkErr := q.UnmarkDispatched(ctx, a.AlertID); unmarkErr != nil {
