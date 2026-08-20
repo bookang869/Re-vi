@@ -15,10 +15,11 @@ var (
 	modeRoutingPRReview   uint64
 	modeRoutingAutonomous uint64
 
-	// smokeFailures has no writer yet: the synthetic smoke test it counts
-	// runs inside the GitHub Actions runner (Phase 4.1), which doesn't
-	// exist in this repo yet. Exposed at a constant 0 until that phase adds
-	// an increment call, wired through /v1/digest/entry's outcome field.
+	// smokeFailures counts /v1/digest/entry reports whose failure_stage is
+	// "boot" -- revi-hermes-target's smoke-test.sh's own marker for an
+	// AUTONOMOUS-mode app boot crash caught by synthetic smoke testing
+	// (TRD FR-03). Wired 2026-08-20 (PLAN 6.9 audit) once a real digest
+	// payload carrying failure_stage existed to key off.
 	smokeFailures uint64
 
 	// duplicateDigestEntries counts /v1/digest/entry reports rejected
@@ -48,6 +49,13 @@ func IncDuplicateDigestEntries() {
 // by the dispatcher because the alert_id was already marked dispatched.
 func IncDuplicateDispatchesSkipped() {
 	atomic.AddUint64(&duplicateDispatchesSkipped, 1)
+}
+
+// IncSmokeFailure records one /v1/digest/entry report whose failure_stage
+// is "boot" -- an AUTONOMOUS-mode app boot crash caught by synthetic smoke
+// testing (TRD FR-03), reported by revi-hermes-target's smoke-test.sh.
+func IncSmokeFailure() {
+	atomic.AddUint64(&smokeFailures, 1)
 }
 
 // IncAlertsReceived records one alert successfully accepted by /v1/alerts

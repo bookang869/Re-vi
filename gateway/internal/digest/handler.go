@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bookang869/Re-vi/gateway/internal/metrics"
 	"github.com/bookang869/Re-vi/gateway/internal/queue"
 	"github.com/bookang869/Re-vi/gateway/internal/store"
 )
@@ -101,6 +102,14 @@ func NewHandler(secret string, q *queue.Queue, runStore *store.Store) http.Handl
 			if err := q.Locks.Delete(r.Context(), queue.LockKey(e.ServiceName, e.ErrorSummary)); err != nil {
 				log.Printf("digest: failed to release flap lock for alert_id=%s service=%s: %v (will fall back to TTL)", e.AlertID, e.ServiceName, err)
 			}
+		}
+
+		// revi-hermes-target's smoke-test.sh reports failure_stage="boot"
+		// for exactly one case: the app crashed during AUTONOMOUS-mode
+		// synthetic smoke testing (TRD FR-03) -- the same event
+		// revi_synthetic_smoke_failures_total exists to count.
+		if e.FailureStage == "boot" {
+			metrics.IncSmokeFailure()
 		}
 
 		runStore.RecordOutcome(r.Context(), store.RunOutcome{

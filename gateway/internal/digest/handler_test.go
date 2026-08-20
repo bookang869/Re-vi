@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bookang869/Re-vi/gateway/internal/metrics"
 	"github.com/bookang869/Re-vi/gateway/internal/queue"
 	"github.com/bookang869/Re-vi/gateway/internal/store"
 )
@@ -188,5 +189,74 @@ func TestHandler_ReleasesLockOnCompletion(t *testing.T) {
 
 	if _, err := q.Locks.Get(context.Background(), queue.LockKey(serviceName, errorSummary)); err == nil {
 		t.Error("lock should have been released after the final report, but is still held")
+	}
+}
+
+// smokeFailuresCount scrapes the current revi_synthetic_smoke_failures_total
+// value off metrics.Handler -- there's no exported reader, only the
+// Prometheus text exposition endpoint.
+func smokeFailuresCount(t *testing.T) uint64 {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	metrics.Handler(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	var count uint64
+	for _, line := range strings.Split(rec.Body.String(), "\n") {
+		if n, err := fmt.Sscanf(line, "revi_synthetic_smoke_failures_total %d", &count); err == nil && n == 1 {
+			return count
+		}
+	}
+	t.Fatal("revi_synthetic_smoke_failures_total not found in /metrics output")
+	return 0
+}
+
+func TestHandler_IncrementsSmokeFailureOnBootStage(t *testing.T) {
+	q := testQueue(t)
+	s := testStore(t)
+	before := smokeFailuresCount(t)
+
+	body, err := json.Marshal(entry{
+		AlertID:      fmt.Sprintf("smoke-boot-test-%d", time.Now().UnixNano()),
+		ReviMode:     "AUTONOMOUS",
+		Outcome:      "APP_BOOT_FAILURE",
+		Summary:      "app crashed on boot",
+		DigestDate:   fmt.Sprintf("test-%d", time.Now().UnixNano()),
+		FailureStage: "boot",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := doRequest(t, q, s, string(body), sign(string(body)))
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("got %d, want 202", rec.Code)
+	}
+	if got := smokeFailuresCount(t); got != before+1 {
+		t.Errorf("revi_synthetic_smoke_failures_total = %d, want %d (failure_stage=boot must increment it)", got, before+1)
+	}
+}
+
+func TestHandler_DoesNotIncrementSmokeFailureOnOtherStages(t *testing.T) {
+	q := testQueue(t)
+	s := testStore(t)
+	before := smokeFailuresCount(t)
+
+	body, err := json.Marshal(entry{
+		AlertID:      fmt.Sprintf("smoke-regression-test-%d", time.Now().UnixNano()),
+		ReviMode:     "AUTONOMOUS",
+		Outcome:      "REGRESSION",
+		Summary:      "existing test suite failed after patch",
+		DigestDate:   fmt.Sprintf("test-%d", time.Now().UnixNano()),
+		FailureStage: "regression_test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := doRequest(t, q, s, string(body), sign(string(body)))
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("got %d, want 202", rec.Code)
+	}
+	if got := smokeFailuresCount(t); got != before {
+		t.Errorf("revi_synthetic_smoke_failures_total = %d, want unchanged %d (failure_stage=regression_test must not increment it)", got, before)
 	}
 }
