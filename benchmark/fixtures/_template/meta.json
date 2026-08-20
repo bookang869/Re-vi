@@ -1,0 +1,10 @@
+{
+  "fault_id": "REPLACE-ME (e.g. go-nil-deref-01, stable once assigned -- see docs/observability-part-b.md Scale)",
+  "fault_type": "runtime exception | compile error | incorrect API behavior | configuration failure | dependency failure | logic regression",
+  "language_runtime": "go | rust | python | node",
+  "fixture_app": "fixture-app-go | fixture-app-rust | fixture-app-python | fixture-app-node",
+  "base_ref": "REPLACE-ME -- the tag/branch in bookang869/revi-hermes-target this fault is cut from, fixed once at authoring time (docs/observability-part-b.md: never re-derived from main mid-corpus)",
+  "service_name": "REPLACE-ME -- sent as labels.service on every trial's synthetic alert; identical across repeat trials of this fault (repeat-trial identity rule)",
+  "error_summary": "REPLACE-ME -- sent as annotations.summary; identical across repeat trials of this fault",
+  "expected_behavior": "REPLACE-ME -- one sentence, human-readable, what a correct fix does differently from the fault. Sent as annotations.expected_behavior; not a spoiler for Hermes -- describes correct behavior, not the bug's internals or the fix mechanics."
+}
