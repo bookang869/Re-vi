@@ -55,6 +55,12 @@ type entry struct {
 	OutputTokens          *int     `json:"output_tokens,omitempty"`
 	Model                 string   `json:"model"`
 	EstimatedCost         *float64 `json:"estimated_cost,omitempty"`
+
+	// Benchmark-only (docs/observability-part-b.md); omitted on every real
+	// run. ValidationGateRejections is a small JSON object keyed by gate
+	// name, e.g. {"build":1,"regression":2}, passed through as-is.
+	CandidatePatchCount      *int   `json:"candidate_patch_count,omitempty"`
+	ValidationGateRejections string `json:"validation_gate_rejections,omitempty"`
 }
 
 // NewHandler returns the /v1/digest/entry handler. secret is
@@ -126,6 +132,9 @@ func NewHandler(secret string, q *queue.Queue, runStore *store.Store) http.Handl
 			Model:                 e.Model,
 			EstimatedCost:         e.EstimatedCost,
 			Summary:               e.Summary,
+
+			CandidatePatchCount:      e.CandidatePatchCount,
+			ValidationGateRejections: e.ValidationGateRejections,
 		})
 
 		w.WriteHeader(http.StatusAccepted)

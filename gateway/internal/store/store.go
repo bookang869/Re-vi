@@ -37,7 +37,27 @@ CREATE TABLE IF NOT EXISTS runs (
 	output_tokens            INTEGER,
 	model                    TEXT,
 	estimated_cost           REAL,
-	summary                  TEXT
+	summary                  TEXT,
+
+	-- Part B (docs/observability-part-b.md): nullable, populated only on
+	-- benchmark runs. experiment_id/fault_id/fault_type/language_runtime/
+	-- expected_behavior come in on the synthetic alert that starts the run
+	-- (same path as service_name); candidate_patch_count/
+	-- validation_gate_rejections come in on the runner's outcome report
+	-- (same path as attempts/failure_stage). independent_verification_passed
+	-- deliberately has no column here: the verifier lives outside the
+	-- runner entirely (docs/observability-part-b.md "Locked: verifier
+	-- isolation"), so only the harness can ever know it, and only after
+	-- this row is already complete -- it lives in the harness's own store
+	-- instead, joined by alert_id/fault_id at report time, rather than
+	-- adding a benchmark-only write endpoint to a production component.
+	experiment_id              TEXT,
+	fault_id                   TEXT,
+	fault_type                 TEXT,
+	language_runtime           TEXT,
+	expected_behavior          TEXT,
+	candidate_patch_count      INTEGER,
+	validation_gate_rejections TEXT
 );
 `
 
@@ -90,6 +110,15 @@ type RunStart struct {
 	AlertID     string
 	ServiceName string
 	ReviMode    string
+
+	// Benchmark-only (docs/observability-part-b.md); empty on every real
+	// run. Set from the synthetic alert's labels/annotations when the
+	// harness fires it.
+	ExperimentID     string
+	FaultID          string
+	FaultType        string
+	LanguageRuntime  string
+	ExpectedBehavior string
 }
 
 // InsertRun records a new run. alert_id is the primary key; ON CONFLICT DO
@@ -102,10 +131,12 @@ func (s *Store) InsertRun(ctx context.Context, r RunStart) {
 	}
 	receivedAt := time.Now().UTC().Format(time.RFC3339)
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO runs (alert_id, service_name, revi_mode, received_at)
-		VALUES (?, ?, ?, ?)
+		INSERT INTO runs (alert_id, service_name, revi_mode, received_at,
+			experiment_id, fault_id, fault_type, language_runtime, expected_behavior)
+		VALUES (?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''))
 		ON CONFLICT(alert_id) DO NOTHING`,
-		r.AlertID, r.ServiceName, r.ReviMode, receivedAt)
+		r.AlertID, r.ServiceName, r.ReviMode, receivedAt,
+		r.ExperimentID, r.FaultID, r.FaultType, r.LanguageRuntime, r.ExpectedBehavior)
 	if err != nil {
 		log.Printf("store: insert run %s failed: %v", r.AlertID, err)
 	}
@@ -142,6 +173,14 @@ type RunOutcome struct {
 	Model                 string
 	EstimatedCost         *float64
 	Summary               string
+
+	// Benchmark-only (docs/observability-part-b.md); empty/nil on every real
+	// run. The runner tracks these directly (it's the one running the
+	// build/boot/smoke/regression gates), unlike independent_verification_passed
+	// which it structurally cannot know. ValidationGateRejections is a
+	// small JSON object keyed by gate name, e.g. {"build":1,"regression":2}.
+	CandidatePatchCount      *int
+	ValidationGateRejections string
 }
 
 // RecordOutcome fills in the outcome fields for an existing run. MergedAt
@@ -193,7 +232,7 @@ func (s *Store) RecordOutcome(ctx context.Context, o RunOutcome) {
 	// non-nil -> the underlying value) rather than passed as *int/*float64
 	// directly, so this doesn't depend on the sqlite driver's own pointer
 	// handling.
-	var attempts, inputTokens, outputTokens any
+	var attempts, inputTokens, outputTokens, candidatePatchCount any
 	var estimatedCost any
 	if o.Attempts != nil {
 		attempts = *o.Attempts
@@ -206,6 +245,9 @@ func (s *Store) RecordOutcome(ctx context.Context, o RunOutcome) {
 	}
 	if o.EstimatedCost != nil {
 		estimatedCost = *o.EstimatedCost
+	}
+	if o.CandidatePatchCount != nil {
+		candidatePatchCount = *o.CandidatePatchCount
 	}
 
 	res, err := s.db.ExecContext(ctx, `
@@ -221,11 +263,14 @@ func (s *Store) RecordOutcome(ctx context.Context, o RunOutcome) {
 			output_tokens = ?,
 			model = NULLIF(?, ''),
 			estimated_cost = ?,
-			summary = ?
+			summary = ?,
+			candidate_patch_count = ?,
+			validation_gate_rejections = NULLIF(?, '')
 		WHERE alert_id = ?`,
 		validatedAt, mergedAt, o.Outcome, o.EscalationReason, attempts,
 		o.FailureStage, o.FailureClassification, inputTokens, outputTokens,
-		o.Model, estimatedCost, o.Summary, o.AlertID)
+		o.Model, estimatedCost, o.Summary, candidatePatchCount,
+		o.ValidationGateRejections, o.AlertID)
 	if err != nil {
 		log.Printf("store: record outcome for %s failed: %v", o.AlertID, err)
 		return

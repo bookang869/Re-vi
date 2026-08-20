@@ -63,6 +63,53 @@ func TestInsertRun(t *testing.T) {
 	}
 }
 
+func TestInsertRun_BenchmarkFieldsStayNullOnRealRun(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	// A real run's RunStart never sets the benchmark fields -- they must
+	// land as SQL NULL, not empty string, so real runs stay cleanly
+	// distinguishable from benchmark ones.
+	s.InsertRun(ctx, RunStart{AlertID: "a1", ServiceName: "svc", ReviMode: "AUTONOMOUS"})
+
+	var faultID, faultType sql.NullString
+	if err := s.db.QueryRow(`SELECT fault_id, fault_type FROM runs WHERE alert_id = ?`, "a1").
+		Scan(&faultID, &faultType); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if faultID.Valid || faultType.Valid {
+		t.Errorf("expected NULL benchmark fields on a real run, got fault_id=%v fault_type=%v", faultID, faultType)
+	}
+}
+
+func TestInsertRun_BenchmarkFieldsStored(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	s.InsertRun(ctx, RunStart{
+		AlertID:          "a1",
+		ServiceName:      "fixture-app-go",
+		ReviMode:         "AUTONOMOUS",
+		ExperimentID:     "exp-1",
+		FaultID:          "go-nil-deref-01",
+		FaultType:        "runtime exception",
+		LanguageRuntime:  "go",
+		ExpectedBehavior: "handler returns 200 instead of panicking",
+	})
+
+	var experimentID, faultID, faultType, languageRuntime, expectedBehavior string
+	if err := s.db.QueryRow(`SELECT experiment_id, fault_id, fault_type, language_runtime, expected_behavior
+		FROM runs WHERE alert_id = ?`, "a1").
+		Scan(&experimentID, &faultID, &faultType, &languageRuntime, &expectedBehavior); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if experimentID != "exp-1" || faultID != "go-nil-deref-01" || faultType != "runtime exception" ||
+		languageRuntime != "go" || expectedBehavior != "handler returns 200 instead of panicking" {
+		t.Errorf("unexpected benchmark fields: experiment_id=%q fault_id=%q fault_type=%q language_runtime=%q expected_behavior=%q",
+			experimentID, faultID, faultType, languageRuntime, expectedBehavior)
+	}
+}
+
 func TestInsertRun_DuplicateDoesNotOverwrite(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -206,6 +253,31 @@ func TestRecordOutcome_Escalated(t *testing.T) {
 	}
 	if r.EscalationReason.String != "REGRESSION" || r.FailureStage.String != "regression_test" || r.FailureClassification.String != "remediation_failure" {
 		t.Errorf("unexpected failure fields: %+v", r)
+	}
+}
+
+func TestRecordOutcome_BenchmarkGateFieldsStored(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	s.InsertRun(ctx, RunStart{AlertID: "a1", ServiceName: "svc", ReviMode: "AUTONOMOUS", FaultID: "go-nil-deref-01"})
+
+	s.RecordOutcome(ctx, RunOutcome{
+		AlertID:                  "a1",
+		Validated:                true,
+		Merged:                   true,
+		Outcome:                  "MERGED",
+		CandidatePatchCount:      intPtr(3),
+		ValidationGateRejections: `{"build":1,"regression":1}`,
+	})
+
+	var candidatePatchCount sql.NullInt64
+	var validationGateRejections sql.NullString
+	if err := s.db.QueryRow(`SELECT candidate_patch_count, validation_gate_rejections FROM runs WHERE alert_id = ?`, "a1").
+		Scan(&candidatePatchCount, &validationGateRejections); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if candidatePatchCount.Int64 != 3 || validationGateRejections.String != `{"build":1,"regression":1}` {
+		t.Errorf("unexpected gate fields: candidate_patch_count=%v validation_gate_rejections=%v", candidatePatchCount, validationGateRejections)
 	}
 }
 

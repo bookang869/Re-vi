@@ -26,6 +26,16 @@ type Alert struct {
 	ErrorSummary string `json:"error_summary"`
 	Timestamp    string `json:"timestamp"`
 	LogContext   string `json:"log_context,omitempty"`
+
+	// Benchmark-only (docs/observability-part-b.md), read from labels/
+	// annotations when present; empty on every real alert since Alertmanager
+	// never sets them. Not required fields — mapAlerts doesn't reject an
+	// alert for omitting these.
+	ExperimentID     string `json:"experiment_id,omitempty"`
+	FaultID          string `json:"fault_id,omitempty"`
+	FaultType        string `json:"fault_type,omitempty"`
+	LanguageRuntime  string `json:"language_runtime,omitempty"`
+	ExpectedBehavior string `json:"expected_behavior,omitempty"`
 }
 
 // invalidAlert records why a single firing alert within a batch was
@@ -82,6 +92,12 @@ func mapAlerts(payload webhookPayload) (fired []Alert, droppedCount int, invalid
 			TraceID:      traceID,
 			ErrorSummary: summary,
 			Timestamp:    raw.StartsAt,
+
+			ExperimentID:     raw.Labels["experiment_id"],
+			FaultID:          raw.Labels["fault_id"],
+			FaultType:        raw.Labels["fault_type"],
+			LanguageRuntime:  raw.Labels["language_runtime"],
+			ExpectedBehavior: raw.Annotations["expected_behavior"],
 		})
 	}
 	return fired, droppedCount, invalid

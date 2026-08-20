@@ -14,6 +14,7 @@ import (
 	"github.com/bookang869/Re-vi/gateway/internal/github"
 	"github.com/bookang869/Re-vi/gateway/internal/metrics"
 	"github.com/bookang869/Re-vi/gateway/internal/queue"
+	"github.com/bookang869/Re-vi/gateway/internal/runs"
 	"github.com/bookang869/Re-vi/gateway/internal/slack"
 	"github.com/bookang869/Re-vi/gateway/internal/store"
 	"github.com/bookang869/Re-vi/gateway/internal/victorialogs"
@@ -61,6 +62,7 @@ func main() {
 	logsClient := victorialogs.NewClient(cfg.VictoriaLogsURL)
 	mux.HandleFunc("/v1/alerts", alerts.NewHandler(cfg.WebhookSecret, q, logsClient, cfg.Mode, runStore))
 	mux.HandleFunc("/v1/digest/entry", digest.NewHandler(cfg.WebhookSecret, q, runStore))
+	mux.HandleFunc("GET /v1/runs/{alert_id}", runs.NewHandler(cfg.WebhookSecret, runStore))
 
 	log.Printf("gateway listening on %s (mode=%s)", cfg.ListenAddr, cfg.Mode)
 	if err := http.ListenAndServe(cfg.ListenAddr, mux); err != nil {

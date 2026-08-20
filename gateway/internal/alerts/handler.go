@@ -59,6 +59,12 @@ func NewHandler(secret string, q *queue.Queue, logsClient *victorialogs.Client, 
 					AlertID:     a.AlertID,
 					ServiceName: a.ServiceName,
 					ReviMode:    mode,
+
+					ExperimentID:     a.ExperimentID,
+					FaultID:          a.FaultID,
+					FaultType:        a.FaultType,
+					LanguageRuntime:  a.LanguageRuntime,
+					ExpectedBehavior: a.ExpectedBehavior,
 				})
 			}
 		}
