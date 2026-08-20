@@ -30,13 +30,12 @@ func NewHandler(secret string, q *queue.Queue, logsClient *victorialogs.Client, 
 			return
 		}
 
-		fired, dropped, err := mapAlerts(payload)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+		fired, dropped, invalid := mapAlerts(payload)
 		if dropped > 0 {
 			log.Printf("alerts: dropped %d resolved alert(s)", dropped)
+		}
+		for _, inv := range invalid {
+			log.Printf("alerts: skipped malformed alert (alertname=%q fingerprint=%q): %s", inv.alertname, inv.fingerprint, inv.reason)
 		}
 
 		if len(fired) == 0 {

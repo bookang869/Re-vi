@@ -69,10 +69,36 @@ func TestHandler_MalformedJSON(t *testing.T) {
 }
 
 func TestHandler_MissingRequiredField(t *testing.T) {
+	// A single malformed alert is skipped and logged, not a batch failure —
+	// nothing to publish, so the handler still returns 200 (PLAN.md 6.11).
 	body := `{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"X"},"annotations":{},"fingerprint":"f1"}]}`
 	rec := doRequest(t, nil, nil, body, "Bearer "+testSecret)
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("got %d, want 400", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Errorf("got %d, want 200", rec.Code)
+	}
+}
+
+func TestHandler_OneMalformedAlertDoesNotBlockRestOfBatch(t *testing.T) {
+	q := testQueue(t)
+	s := testStore(t)
+	fingerprint := fmt.Sprintf("f-%d", time.Now().UnixNano())
+	alertID := "ServiceErrorRateHigh-" + fingerprint
+	body := fmt.Sprintf(`{"status":"firing","alerts":[
+		{"status":"firing","labels":{"alertname":"X"},"annotations":{},"fingerprint":"missing-fields"},
+		{"status":"firing","labels":{"alertname":"ServiceErrorRateHigh","service":"payment-processor","trace_id":"abc"},"annotations":{"summary":"boom-%s"},"startsAt":"2026-07-20T19:30:00Z","fingerprint":"%s"}
+	]}`, fingerprint, fingerprint)
+
+	rec := doRequest(t, q, s, body, "Bearer "+testSecret)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("got %d, want 202", rec.Code)
+	}
+
+	var gotService string
+	if err := s.DB().QueryRow(`SELECT service_name FROM runs WHERE alert_id = ?`, alertID).Scan(&gotService); err != nil {
+		t.Fatalf("run row not written for the still-valid alert %s: %v", alertID, err)
+	}
+	if gotService != "payment-processor" {
+		t.Errorf("got service=%q, want payment-processor", gotService)
 	}
 }
 

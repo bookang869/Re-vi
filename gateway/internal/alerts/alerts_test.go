@@ -13,9 +13,9 @@ func firingAlert() webhookAlert {
 }
 
 func TestMapAlerts_Valid(t *testing.T) {
-	fired, dropped, err := mapAlerts(webhookPayload{Status: "firing", Alerts: []webhookAlert{firingAlert()}})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	fired, dropped, invalid := mapAlerts(webhookPayload{Status: "firing", Alerts: []webhookAlert{firingAlert()}})
+	if len(invalid) != 0 {
+		t.Fatalf("unexpected invalid alerts: %+v", invalid)
 	}
 	if dropped != 0 || len(fired) != 1 {
 		t.Fatalf("got fired=%d dropped=%d, want fired=1 dropped=0", len(fired), dropped)
@@ -38,9 +38,9 @@ func TestMapAlerts_Resolved(t *testing.T) {
 	resolved := firingAlert()
 	resolved.Status = "resolved"
 
-	fired, dropped, err := mapAlerts(webhookPayload{Status: "resolved", Alerts: []webhookAlert{resolved}})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	fired, dropped, invalid := mapAlerts(webhookPayload{Status: "resolved", Alerts: []webhookAlert{resolved}})
+	if len(invalid) != 0 {
+		t.Fatalf("unexpected invalid alerts: %+v", invalid)
 	}
 	if len(fired) != 0 || dropped != 1 {
 		t.Fatalf("got fired=%d dropped=%d, want fired=0 dropped=1", len(fired), dropped)
@@ -49,9 +49,9 @@ func TestMapAlerts_Resolved(t *testing.T) {
 
 func TestMapAlerts_ResolvedSkipsFieldValidation(t *testing.T) {
 	resolved := webhookAlert{Status: "resolved"} // no labels/annotations/fingerprint at all
-	_, dropped, err := mapAlerts(webhookPayload{Alerts: []webhookAlert{resolved}})
-	if err != nil {
-		t.Fatalf("resolved alert with missing fields should not error: %v", err)
+	_, dropped, invalid := mapAlerts(webhookPayload{Alerts: []webhookAlert{resolved}})
+	if len(invalid) != 0 {
+		t.Fatalf("resolved alert with missing fields should not be flagged invalid: %+v", invalid)
 	}
 	if dropped != 1 {
 		t.Fatalf("dropped = %d, want 1", dropped)
@@ -73,10 +73,31 @@ func TestMapAlerts_MissingRequiredFields(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			a := firingAlert()
 			tc.mutate(&a)
-			_, _, err := mapAlerts(webhookPayload{Alerts: []webhookAlert{a}})
-			if err == nil {
-				t.Error("expected error, got nil")
+			fired, _, invalid := mapAlerts(webhookPayload{Alerts: []webhookAlert{a}})
+			if len(invalid) != 1 {
+				t.Fatalf("got %d invalid alerts, want 1", len(invalid))
+			}
+			if len(fired) != 0 {
+				t.Errorf("got %d fired, want 0", len(fired))
 			}
 		})
+	}
+}
+
+func TestMapAlerts_OneMalformedDoesNotDropRestOfBatch(t *testing.T) {
+	good := firingAlert()
+	bad := firingAlert()
+	bad.Fingerprint = ""
+	bad.Labels = map[string]string{"alertname": "OtherAlert", "service": "unrelated-service", "trace_id": "xyz"}
+
+	fired, dropped, invalid := mapAlerts(webhookPayload{Status: "firing", Alerts: []webhookAlert{bad, good}})
+	if dropped != 0 {
+		t.Errorf("dropped = %d, want 0", dropped)
+	}
+	if len(invalid) != 1 || invalid[0].alertname != "OtherAlert" {
+		t.Fatalf("got invalid=%+v, want exactly the malformed OtherAlert entry", invalid)
+	}
+	if len(fired) != 1 || fired[0].AlertID != "ServiceErrorRateHigh-abc123" {
+		t.Fatalf("got fired=%+v, want the good alert to still be published", fired)
 	}
 }
