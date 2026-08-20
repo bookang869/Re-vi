@@ -106,6 +106,11 @@ services:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       # Operator-provided file containing REVI_WEBHOOK_SECRET's value, not committed to git.
       - ./secrets/revi_webhook_secret:/etc/alertmanager/secrets/revi_webhook_secret:ro
+      # Notification/silence state (image's default --storage.path=/alertmanager).
+      # Added PLAN 6.11 Part B: only safe now that the stack runs continuously on
+      # a VPS (6.1) instead of being restarted at will during laptop rehearsals —
+      # see PLAN.md for why this was deliberately deferred until then.
+      - alertmanager-data:/alertmanager
     ports:
       - "9093:9093"
     networks:
@@ -174,6 +179,8 @@ volumes:
   nats-data:
     driver: local
   gateway-data:
+    driver: local
+  alertmanager-data:
     driver: local
 
 networks:
