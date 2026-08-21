@@ -1,0 +1,10 @@
+{
+  "fault_id": "node-sliceoob-08",
+  "fault_type": "runtime exception",
+  "language_runtime": "node",
+  "fixture_app": "fixture-app-node",
+  "base_ref": "fault/node-sliceoob-08-base",
+  "service_name": "fixture-app-node",
+  "error_summary": "TypeError: Cannot read properties of undefined (reading 'toUpperCase') in catalogItem (items.js)",
+  "expected_behavior": "GET /items?index=99 returns HTTP 400 instead of dropping the connection, GET /items?index=1 still returns 'GADGET', and the process keeps handling requests normally afterward."
+}
