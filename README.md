@@ -85,7 +85,7 @@ flowchart TD
     %% =========================
     %% 2. HERMES RUNNER
     %% =========================
-    subgraph TARGETREPO["Target repo (revi-hermes-target)"]
+    subgraph TARGETREPO["Target repo"]
         direction TB
 
         GHA["Runner<br/>hermes-triage.yml"]
@@ -103,6 +103,7 @@ flowchart TD
     end
 
     NATS -->|repository_dispatch| GHA
+    GHA -.->|"POST /v1/digest/entry<br/>every run"| GW
 
 
     %% =========================
@@ -119,12 +120,6 @@ flowchart TD
     PR -->|PR_READY| ESC
     Exhaustion -->|EXHAUSTION| ESC
     Merge -->|"boot failure / regression"| ESC
-
-
-    %% =========================
-    %% SECONDARY / FEEDBACK PATHS
-    %% =========================
-    GHA -.->|"POST /v1/digest/entry<br/>every run"| GW
     GW -.-> Digest
 ```
 

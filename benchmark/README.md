@@ -95,12 +95,59 @@ Two rules that exist to keep verification actually independent:
   eventually pre-flight-check this rather than relying on the operator to
   remember (not built yet).
 
+## Running the harness
+
+`benchmark/harness/` (a separate Go module —
+`github.com/bookang869/Re-vi/benchmark/harness`, intentionally standalone
+rather than a package inside the Gateway module) automates the dispatch ->
+poll -> verify -> record loop described above and in
+docs/observability-part-b.md's "Locked: harness/pipeline interaction" and
+"Locked: staged rollout" sections. From the pipeline's point of view a
+trial it dispatches looks exactly like a real alert — same
+`POST /v1/alerts`, same Bearer secret, no lower-level shortcut into NATS or
+`repository_dispatch`.
+
+```
+cd benchmark/harness
+go build ./...
+go test ./...
+
+# env (REVI_WEBHOOK_SECRET required, rest default to sensible local values — see config.go):
+export REVI_GATEWAY_URL=http://localhost:8080          # or the Oracle VPS's tailnet address
+export REVI_WEBHOOK_SECRET=...                          # same secret the Gateway itself uses
+export REVI_HARNESS_TARGET_CLONE=$HOME/revi-hermes-target   # needs a working, push-authenticated "origin"
+
+go run . stage1                        # 1 trial x 32 faults, parallel, prints an experiment_id
+go run . stage2 -experiment <id>       # remaining 2 trials x 32 faults, only if stage1's gate passed
+go run . trial -fault <fault_id>       # a single ad hoc trial, e.g. while authoring a new fixture
+go run . report -experiment <id>       # re-print a summary from a past run's results file
+```
+
+Two things it does that aren't obvious from the commands above:
+
+- **Every `verify.sh` invocation is globally serialized** (verify.go), not
+  just per fault or per fixture_app. Every `fixture-app-*` boots on a
+  hardcoded `:8080` (`revi-hermes-target/scripts/resolve-boot-command.sh`
+  has no port override for any of the four languages), so two verifiers
+  racing for that port — even across two different fixture_apps — would
+  reproduce the same silent false-negative the first live trial hit from an
+  unrelated stray process on the same port (see "First live trial" in
+  docs/observability-part-b.md). This costs some wall-clock time (verifiers
+  queue behind each other) in exchange for never needing to reason about
+  which fixture_apps happen to share a port.
+- **`independent_verification_passed` lives only in this harness's own
+  per-experiment JSON file** (`benchmark/harness/results/<experiment_id>.json`,
+  gitignored), never written back to the Gateway — see "What isn't decided
+  here" below. A trial whose outcome never reached `MERGED` records
+  `verification_outcome: "not_applicable"`, not a scored failure — there's
+  nothing to independently verify if nothing merged.
+
 ## What isn't decided here
 
 Verification *results* (`independent_verification_passed` per trial) are
 not written back into the Gateway's `runs` table — there's no endpoint for
 that, deliberately (docs/observability-part-b.md "Locked: verifier
-isolation," second `/grill-me` pass). The harness that will exist to
-orchestrate trials owns that data in its own store, joined against the
-Gateway's data (`GET /v1/runs/{alert_id}`) by `alert_id`/`fault_id` at
-report time. Not built yet.
+isolation," second `/grill-me` pass). The harness (`benchmark/harness/`,
+built — see "Running the harness" above) owns that data in its own store
+instead, joined against the Gateway's data (`GET /v1/runs/{alert_id}`) by
+`alert_id`/`fault_id` at report time.
