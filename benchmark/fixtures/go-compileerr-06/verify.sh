@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# revi-benchmark-verifier -- do not remove this marker line. It's what
+# scripts/benchmark/check-isolation.sh greps every ref of
+# bookang869/revi-hermes-target for, to catch this file (or its fixtures)
+# ever leaking into the repo Hermes's runner clones. If you're reading this
+# comment inside revi-hermes-target, something has already gone wrong --
+# stop and see docs/observability-part-b.md "Locked: verifier isolation".
+#
+# Independent verifier for fault_id=go-compileerr-06 (see meta.json). The
+# fault is fixture-app-go's AverageOrderValue (stats.go) referencing an
+# undefined identifier, so go build ./... fails for the whole package.
+# Checked by actually building and hitting the real /average endpoint, not
+# by inspecting source or any test file Hermes could have authored --
+# AverageOrderValue is wired to HTTP specifically so a "fix" that just
+# deletes the broken function (which would also make the package compile)
+# doesn't score as correct: it would 404 here instead of returning 20.
+#
+# Known limitation (see benchmark/README.md): fixture-app-go always binds
+# :8080, shared with every other fixture_app -- the harness serializes all
+# verify.sh invocations process-wide for exactly this reason. Free :8080
+# (e.g. `docker compose stop gateway`) before running this by hand.
+#
+# Usage: verify.sh <path-to-checked-out-revi-hermes-target>
+# Exit code (three-way, see benchmark/README.md):
+#   0  -- verified correct.     independent_verification_passed = true
+#   1  -- verified incorrect.   independent_verification_passed = false
+#   2+ -- verifier itself did not reach a verdict (build/boot/env failure).
+set -uo pipefail   # not -e: a failed build/check is a verdict (exit 1), not a script bug
+
+REPO_ROOT="${1:?usage: verify.sh <path-to-checked-out-revi-hermes-target>}"
+FIXTURE_APP="fixture-app-go"
+APP_DIR="$REPO_ROOT/$FIXTURE_APP"
+PORT=8080
+HEALTH_URL="http://localhost:${PORT}/healthz"
+AVERAGE_URL="http://localhost:${PORT}/average"
+BIN="$(mktemp -t revi-verify-go-compileerr-06-XXXXXX)"
+
+if [ ! -d "$APP_DIR" ]; then
+  echo "verify: $APP_DIR not found" >&2
+  exit 2
+fi
+
+cleanup() {
+  [ -n "${APP_PID:-}" ] && kill "$APP_PID" 2>/dev/null
+  [ -n "${APP_PID:-}" ] && wait "$APP_PID" 2>/dev/null
+  rm -f "$BIN"
+}
+trap cleanup EXIT
+
+cd "$APP_DIR" || { echo "verify: cd $APP_DIR failed" >&2; exit 2; }
+
+if ! go build -o "$BIN" . 2>&1; then
+  echo "verify: go build failed -- not correctly repaired" >&2
+  exit 1
+fi
+
+"$BIN" &
+APP_PID=$!
+
+BOOTED=0
+for _ in $(seq 1 20); do
+  if curl --fail --silent --max-time 1 -o /dev/null "$HEALTH_URL"; then
+    BOOTED=1
+    break
+  fi
+  if ! kill -0 "$APP_PID" 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
+if [ "$BOOTED" -ne 1 ]; then
+  echo "verify: app never became healthy at $HEALTH_URL -- verifier could not run the check" >&2
+  exit 2
+fi
+
+body=$(curl --silent --max-time 2 "$AVERAGE_URL")
+if [ "$body" != "20" ]; then
+  echo "verify: GET /average returned '$body', want '20' -- not correctly repaired" >&2
+  exit 1
+fi
+
+echo "verify: build succeeded and /average returns 20 -- correctly repaired"
+exit 0

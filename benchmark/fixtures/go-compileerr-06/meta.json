@@ -1,0 +1,10 @@
+{
+  "fault_id": "go-compileerr-06",
+  "fault_type": "compile error",
+  "language_runtime": "go",
+  "fixture_app": "fixture-app-go",
+  "base_ref": "fault/go-compileerr-06-base-v2",
+  "service_name": "fixture-app-go",
+  "error_summary": "compile error: stats.go references an undefined identifier ('order'), so go build ./... fails for the whole package",
+  "expected_behavior": "go build ./... succeeds, AverageOrderValue([]int{10,20,30}) returns 20, and the server still starts and serves /healthz normally."
+}

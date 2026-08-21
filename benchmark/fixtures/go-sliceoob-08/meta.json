@@ -1,0 +1,10 @@
+{
+  "fault_id": "go-sliceoob-08",
+  "fault_type": "runtime exception",
+  "language_runtime": "go",
+  "fixture_app": "fixture-app-go",
+  "base_ref": "fault/go-sliceoob-08-base",
+  "service_name": "fixture-app-go",
+  "error_summary": "panic: runtime error: index out of range in handleCatalogItem (items.go)",
+  "expected_behavior": "GET /items?index=99 returns HTTP 400 instead of panicking, GET /items?index=1 still returns 'gadget', and the process keeps handling requests normally afterward."
+}

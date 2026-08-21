@@ -1,0 +1,10 @@
+{
+  "fault_id": "go-badvalidation-07",
+  "fault_type": "incorrect API behavior",
+  "language_runtime": "go",
+  "fixture_app": "fixture-app-go",
+  "base_ref": "fault/go-badvalidation-07-base",
+  "service_name": "fixture-app-go",
+  "error_summary": "incorrect API behavior: /format-order accepts and echoes back negative amounts instead of rejecting them with 400",
+  "expected_behavior": "GET /format-order?amount=-5 returns HTTP 400 with a JSON error body, while GET /format-order?amount=5 still returns HTTP 200 with {\"amount\":5,\"currency\":\"USD\"}."
+}
