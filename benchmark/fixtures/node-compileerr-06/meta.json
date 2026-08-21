@@ -1,0 +1,10 @@
+{
+  "fault_id": "node-compileerr-06",
+  "fault_type": "compile error",
+  "language_runtime": "node",
+  "fixture_app": "fixture-app-node",
+  "base_ref": "fault/node-compileerr-06-base",
+  "service_name": "fixture-app-node",
+  "error_summary": "SyntaxError: missing ) after argument list in stats.js, so requiring it (and thus booting the app at all) fails",
+  "expected_behavior": "node --check succeeds on every .js file in fixture-app-node, averageOrderValue([10,20,30]) returns 20, and the server boots and serves /healthz normally."
+}
