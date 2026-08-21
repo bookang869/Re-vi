@@ -1,0 +1,10 @@
+{
+  "fault_id": "rust-compileerr-06",
+  "fault_type": "compile error",
+  "language_runtime": "rust",
+  "fixture_app": "fixture-app-rust",
+  "base_ref": "fault/rust-compileerr-06-base",
+  "service_name": "fixture-app-rust",
+  "error_summary": "compile error: stats.rs references an undefined identifier ('order'), so cargo build fails for the whole crate",
+  "expected_behavior": "cargo build succeeds, average_order_value(&[10,20,30]) returns 20, and the server still starts and serves /healthz normally."
+}

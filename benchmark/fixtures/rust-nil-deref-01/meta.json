@@ -1,0 +1,10 @@
+{
+  "fault_id": "rust-nil-deref-01",
+  "fault_type": "runtime exception",
+  "language_runtime": "rust",
+  "fixture_app": "fixture-app-rust",
+  "base_ref": "fault/rust-nil-deref-01-base",
+  "service_name": "fixture-app-rust",
+  "error_summary": "panic: called `Option::unwrap()` on a `None` value in summarize (order.rs)",
+  "expected_behavior": "GET /summarize returns HTTP 200 with a real body instead of panicking, for an Order with no Customer attached, and the process keeps handling requests normally afterward."
+}

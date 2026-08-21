@@ -1,0 +1,10 @@
+{
+  "fault_id": "rust-discount-03",
+  "fault_type": "logic regression",
+  "language_runtime": "rust",
+  "fixture_app": "fixture-app-rust",
+  "base_ref": "fault/rust-discount-03-base",
+  "service_name": "fixture-app-rust",
+  "error_summary": "incorrect API behavior: /discount does not apply the 10% bulk discount to orders of exactly 10 units",
+  "expected_behavior": "GET /discount?unit_price=100&qty=10 returns 900 (discount applied at exactly 10 units, not only above it), qty=11 still returns 990, and qty=9 still returns 900 with no discount."
+}
