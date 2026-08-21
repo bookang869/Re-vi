@@ -3,7 +3,7 @@
   "fault_type": "runtime exception",
   "language_runtime": "rust",
   "fixture_app": "fixture-app-rust",
-  "base_ref": "fault/rust-divzero-02-base",
+  "base_ref": "fault/rust-divzero-02-base-v2",
   "service_name": "fixture-app-rust",
   "error_summary": "panic: attempt to divide by zero in divide_share (divide.rs)",
   "expected_behavior": "GET /divide-share?total=X&parts=0 returns HTTP 400 instead of panicking, GET /divide-share?total=100&parts=4 still returns 25, and the process keeps handling requests normally afterward."

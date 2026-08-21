@@ -47,6 +47,11 @@ if [ ! -d "$APP_DIR" ]; then
   exit 2
 fi
 
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "verify: cargo not found on PATH -- verifier could not run the check (this machine has no Rust toolchain; run inside a container that has one, e.g. rust:1-slim)" >&2
+  exit 2
+fi
+
 cleanup() {
   [ -n "${APP_PID:-}" ] && kill "$APP_PID" 2>/dev/null
   [ -n "${APP_PID:-}" ] && wait "$APP_PID" 2>/dev/null

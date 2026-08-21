@@ -3,7 +3,7 @@
   "fault_type": "runtime exception",
   "language_runtime": "rust",
   "fixture_app": "fixture-app-rust",
-  "base_ref": "fault/rust-sliceoob-08-base",
+  "base_ref": "fault/rust-sliceoob-08-base-v2",
   "service_name": "fixture-app-rust",
   "error_summary": "panic: index out of bounds in catalog_item (items.rs)",
   "expected_behavior": "GET /items?index=99 returns HTTP 400 instead of panicking, GET /items?index=1 still returns 'gadget', and the process keeps handling requests normally afterward."
