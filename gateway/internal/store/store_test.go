@@ -328,3 +328,78 @@ func TestNilStoreIsSafe(t *testing.T) {
 		t.Errorf("Close() on nil store: %v", err)
 	}
 }
+
+// TestOpen_MigratesExistingFileMissingAdditiveColumns reproduces what
+// happened for real deploying Part B's schema change onto the Oracle VPS's
+// pre-existing revi.db (docs/observability-part-b.md's "First live trial"
+// section): a file created under the original (pre-Part-B) column set, then
+// reopened by a binary whose schema string now includes additiveColumns.
+// CREATE TABLE IF NOT EXISTS alone is a no-op against it; Open() must add
+// the missing columns itself.
+func TestOpen_MigratesExistingFileMissingAdditiveColumns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+
+	oldSchemaDB, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open pre-existing file: %v", err)
+	}
+	const oldSchema = `
+		CREATE TABLE runs (
+			alert_id                TEXT PRIMARY KEY,
+			service_name             TEXT NOT NULL,
+			revi_mode                TEXT NOT NULL,
+			received_at              TEXT NOT NULL,
+			validated_at             TEXT,
+			merged_at                TEXT,
+			outcome                  TEXT,
+			escalation_reason        TEXT,
+			attempts                 INTEGER,
+			failure_stage            TEXT,
+			failure_classification   TEXT,
+			input_tokens             INTEGER,
+			output_tokens            INTEGER,
+			model                    TEXT,
+			estimated_cost           REAL,
+			summary                  TEXT
+		);`
+	if _, err := oldSchemaDB.Exec(oldSchema); err != nil {
+		t.Fatalf("create old-schema table: %v", err)
+	}
+	if _, err := oldSchemaDB.Exec(`INSERT INTO runs (alert_id, service_name, revi_mode, received_at) VALUES ('pre-existing', 'svc', 'PR_REVIEW', 'x')`); err != nil {
+		t.Fatalf("seed pre-existing row: %v", err)
+	}
+	if err := oldSchemaDB.Close(); err != nil {
+		t.Fatalf("close pre-existing file: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() against old-schema file: %v", err)
+	}
+	defer s.Close()
+
+	// The pre-existing row must survive the migration untouched.
+	var serviceName string
+	if err := s.db.QueryRow(`SELECT service_name FROM runs WHERE alert_id = 'pre-existing'`).Scan(&serviceName); err != nil {
+		t.Fatalf("pre-existing row lost after migration: %v", err)
+	}
+	if serviceName != "svc" {
+		t.Errorf("pre-existing row corrupted: service_name = %q, want %q", serviceName, "svc")
+	}
+
+	// A write that touches an additive column must now succeed instead of
+	// silently failing (the actual production bug).
+	s.InsertRun(context.Background(), RunStart{
+		AlertID:     "new-after-migration",
+		ServiceName: "fixture-app-go",
+		ReviMode:    "AUTONOMOUS",
+		FaultID:     "go-nil-deref-01",
+	})
+	var faultID sql.NullString
+	if err := s.db.QueryRow(`SELECT fault_id FROM runs WHERE alert_id = 'new-after-migration'`).Scan(&faultID); err != nil {
+		t.Fatalf("row with additive column not written: %v", err)
+	}
+	if !faultID.Valid || faultID.String != "go-nil-deref-01" {
+		t.Errorf("fault_id = %+v, want valid \"go-nil-deref-01\"", faultID)
+	}
+}

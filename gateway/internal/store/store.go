@@ -61,6 +61,32 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 `
 
+// additiveColumns are the nullable columns that have been added to the
+// schema after the original table was first created. CREATE TABLE IF NOT
+// EXISTS (schema, above) only ever fires against a brand-new file — it's a
+// silent no-op against a file that already has the runs table under an
+// older column set, so a new binary deployed onto an existing database
+// would otherwise fail every write that touches these columns until
+// someone runs an ALTER TABLE by hand (happened for real 2026-08-20/21
+// deploying Part B's columns onto the Oracle VPS's pre-existing revi.db —
+// see docs/observability-part-b.md's "First live trial" section).
+// migrateColumns (below) closes that gap by diffing this list against
+// PRAGMA table_info and adding whatever's missing. The next time a column
+// gets added to the schema string, add it here too, in the same commit —
+// this list is what actually makes an existing deployment pick it up.
+var additiveColumns = []struct {
+	name string
+	ddl  string
+}{
+	{"experiment_id", "TEXT"},
+	{"fault_id", "TEXT"},
+	{"fault_type", "TEXT"},
+	{"language_runtime", "TEXT"},
+	{"expected_behavior", "TEXT"},
+	{"candidate_patch_count", "INTEGER"},
+	{"validation_gate_rejections", "TEXT"},
+}
+
 type Store struct {
 	db *sql.DB
 }
@@ -82,10 +108,51 @@ func Open(path string) (*Store, error) {
 	}
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
+		return nil, fmt.Errorf("create sqlite schema: %w", err)
+	}
+	if err := migrateColumns(db); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("migrate sqlite schema: %w", err)
 	}
 
 	return &Store{db: db}, nil
+}
+
+// migrateColumns adds any of additiveColumns missing from an existing runs
+// table — the retrofit CREATE TABLE IF NOT EXISTS in schema can't do, since
+// it's a no-op against a table that already exists under an older column
+// set. A no-op itself against a freshly-created table, since schema already
+// created every column in one shot.
+func migrateColumns(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(runs)`)
+	if err != nil {
+		return fmt.Errorf("read table_info: %w", err)
+	}
+	existing := make(map[string]bool)
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, colType string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan table_info: %w", err)
+		}
+		existing[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate table_info: %w", err)
+	}
+	rows.Close()
+
+	for _, col := range additiveColumns {
+		if existing[col.name] {
+			continue
+		}
+		if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE runs ADD COLUMN %s %s`, col.name, col.ddl)); err != nil {
+			return fmt.Errorf("add column %s: %w", col.name, err)
+		}
+	}
+	return nil
 }
 
 func (s *Store) Close() error {
