@@ -27,6 +27,17 @@
 # serialize verify.sh invocations for this fixture_app, even if it dispatches
 # the underlying trials themselves in parallel -- see benchmark/README.md.
 #
+# Bigger than concurrent verifier runs, though (found 2026-08-21 running
+# go-nil-deref-01's first live trial): ANYTHING already bound to :8080 --
+# not just another verify.sh run -- causes a SILENT false negative. This
+# script's health check only confirms *something* answers GET /healthz with
+# 200; it doesn't confirm that something is this freshly-built binary. A
+# stray local `gateway` container (also on :8080, also serving /healthz)
+# answers the health check just fine, then GET /summarize 404s against the
+# wrong process and scores as "verified incorrect" even when Hermes's fix
+# was correct. Free :8080 (e.g. `docker compose stop gateway`) before
+# running this locally.
+#
 # Usage: verify.sh <path-to-checked-out-revi-hermes-target>
 # Exit code (three-way, see benchmark/README.md):
 #   0  -- verified correct.     independent_verification_passed = true

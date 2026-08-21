@@ -25,7 +25,7 @@ new one.
 | `fault_type` | One of the six categories in docs/observability-part-b.md's Scale section. |
 | `language_runtime` | `go` \| `rust` \| `python` \| `node`. |
 | `fixture_app` | Which `fixture-app-*` subdirectory of `revi-hermes-target` this fault touches. Exactly one — faults are never stacked (isolation rule). |
-| `base_ref` | The tag/branch in `revi-hermes-target` this fault is cut from, fixed at authoring time. Every trial (including repeats) re-cuts its working branch from this same ref, never from `main` at trial time — see "clean baseline" in the Part B doc. |
+| `base_ref` | The tag/branch in `revi-hermes-target` this fault is cut from, fixed at authoring time. Every trial (including repeats) re-cuts its working branch from this same ref, never from `main` at trial time — see "clean baseline" in the Part B doc. **The freeze only covers fixture content, not shared tooling** (`scripts/`, `.github/workflows/`): a tag cut before a later fix to those lands on `main` inherits the old, broken tooling (found running `go-nil-deref-01`'s first live trial, 2026-08-21 — its tag predated a `resolve-boot-command.sh` fix and reproduced a bug that fix was supposed to have already closed). If a trial fails on something that looks like stale tooling rather than the fault itself, check whether `base_ref` predates a relevant `revi-hermes-target` fix; if so, cut a new tag at `origin/main`'s tip (after confirming via `git diff --stat -- fixture-app-*/` that nothing in the fault's own fixture app changed) rather than force-moving the original — see `docs/observability-part-b.md`'s "First live trial" section for the `-v2` tag precedent. |
 | `service_name` / `error_summary` | Sent as `labels.service` / `annotations.summary` on every trial's synthetic alert. Must stay identical across repeat trials of the same fault — that's what makes the flap lock serialize them correctly (repeat-trial identity rule). `alert_id`/`trace_id` vary per trial instead; the harness generates those, not this file. `service_name` must be one of `revi-hermes-target/scripts/resolve-boot-command.sh`'s recognized values (`fixture-app-go`/`-rust`/`-node`/`-python`) — AUTONOMOUS mode's smoke test resolves boot command/health URL from it via a fixed table, not codebase inspection, and an unrecognized value fails that step before Hermes gets a chance to fix anything (found authoring `go-nil-deref-01`). Add a new case there if a fault ever needs a service name outside that table. |
 | `expected_behavior` | One sentence: what correct behavior looks like, written from the outside (observable behavior), not the bug's internals or how to fix it. Recorded on the `runs` table for later reporting. |
 
@@ -83,6 +83,17 @@ Two rules that exist to keep verification actually independent:
   and before merging any fixture-authoring commit in that repo. A human
   authoring 32 of these by hand will eventually forget a rule that only
   lives in a comment; this doesn't rely on remembering.
+- **A verifier that health-checks a fixed port before hitting the app under
+  test is trusting that nothing else on the machine answers that port.**
+  Found 2026-08-21 running `go-nil-deref-01`'s first live trial: a stray
+  local `gateway` container was still bound to the same port
+  `fixture-app-go` uses, so the verifier's health check passed against the
+  *Gateway* instead of the freshly-built fixture binary, and the real check
+  (`GET /summarize`) then failed against the wrong process — a silent
+  false-negative, not an honest exit-1 verdict. Free whatever port a
+  fixture app binds before running its verifier locally; the harness should
+  eventually pre-flight-check this rather than relying on the operator to
+  remember (not built yet).
 
 ## What isn't decided here
 

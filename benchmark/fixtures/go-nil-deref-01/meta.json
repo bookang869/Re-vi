@@ -3,7 +3,7 @@
   "fault_type": "runtime exception",
   "language_runtime": "go",
   "fixture_app": "fixture-app-go",
-  "base_ref": "fault/go-nil-deref-01-base",
+  "base_ref": "fault/go-nil-deref-01-base-v2",
   "service_name": "fixture-app-go",
   "error_summary": "panic: runtime error: invalid memory address or nil pointer dereference in Summarize (order.go)",
   "expected_behavior": "GET /summarize returns HTTP 200 with a real body instead of panicking, for an Order with no Customer attached, and the process keeps handling requests normally afterward."
