@@ -1,0 +1,10 @@
+{
+  "fault_id": "python-config-04",
+  "fault_type": "configuration failure",
+  "language_runtime": "python",
+  "fixture_app": "fixture-app-python",
+  "base_ref": "fault/python-config-04-base",
+  "service_name": "fixture-app-python",
+  "error_summary": "configuration failure: an invalid MAX_ORDER_AMOUNT value silently disables ordering instead of falling back to the documented default",
+  "expected_behavior": "With MAX_ORDER_AMOUNT set to a non-numeric value, GET /validate-order?amount=50000 still returns 'accepted' (falling back to the documented 100000 default), while a genuinely over-limit amount is still rejected under the default."
+}

@@ -1,0 +1,10 @@
+{
+  "fault_id": "python-divzero-02",
+  "fault_type": "runtime exception",
+  "language_runtime": "python",
+  "fixture_app": "fixture-app-python",
+  "base_ref": "fault/python-divzero-02-base",
+  "service_name": "fixture-app-python",
+  "error_summary": "ZeroDivisionError: division by zero in divide_share (divide.py)",
+  "expected_behavior": "GET /divide-share?total=X&parts=0 returns HTTP 400 instead of dropping the connection, GET /divide-share?total=100&parts=4 still returns 25, and the process keeps handling requests normally afterward."
+}

@@ -1,0 +1,10 @@
+{
+  "fault_id": "python-dependency-05",
+  "fault_type": "dependency failure",
+  "language_runtime": "python",
+  "fixture_app": "fixture-app-python",
+  "base_ref": "fault/python-dependency-05-base",
+  "service_name": "fixture-app-python",
+  "error_summary": "dependency failure: /inventory forwards a non-200 response from the downstream inventory service as if it were a successful 200 lookup",
+  "expected_behavior": "When the downstream inventory service (INVENTORY_URL) returns a non-200 status, GET /inventory returns HTTP 503, not the downstream's raw body under a 200 status; a genuinely successful downstream 200 is still relayed as 200."
+}

@@ -1,0 +1,10 @@
+{
+  "fault_id": "python-sliceoob-08",
+  "fault_type": "runtime exception",
+  "language_runtime": "python",
+  "fixture_app": "fixture-app-python",
+  "base_ref": "fault/python-sliceoob-08-base",
+  "service_name": "fixture-app-python",
+  "error_summary": "IndexError: list index out of range in catalog_item (items.py)",
+  "expected_behavior": "GET /items?index=99 returns HTTP 400 instead of dropping the connection, GET /items?index=1 still returns 'gadget', and the process keeps handling requests normally afterward."
+}
