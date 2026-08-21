@@ -81,10 +81,22 @@ if [ "$BOOTED" -ne 1 ]; then
 fi
 
 body=$(curl --silent --max-time 2 "$AVERAGE_URL")
-if [ "$body" != "20" ]; then
-  echo "verify: GET /average returned '$body', want '20' -- not correctly repaired" >&2
+# Numeric compare, not exact string match: a true-division fix (sum/len)
+# legitimately returns "20.0" where the baseline's floor division returns
+# "20" -- numerically identical (60/3=20 exactly), just a different Python
+# str() representation. An exact string match would wrongly fail a correct
+# fix (found 2026-08-21).
+if ! python3 -c "
+import sys
+try:
+    got = float('''$body''')
+except ValueError:
+    sys.exit(1)
+sys.exit(0 if got == 20 else 1)
+"; then
+  echo "verify: GET /average returned '$body', want a value equal to 20 -- not correctly repaired" >&2
   exit 1
 fi
 
-echo "verify: py_compile succeeded and /average returns 20 -- correctly repaired"
+echo "verify: py_compile succeeded and /average returns 20 (got '$body') -- correctly repaired"
 exit 0
