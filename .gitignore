@@ -2,3 +2,5 @@
 CLAUDE.md
 /docs/
 .env
+/benchmark/harness/results/
+/benchmark/harness/harness
