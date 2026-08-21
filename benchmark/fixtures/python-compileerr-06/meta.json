@@ -1,0 +1,10 @@
+{
+  "fault_id": "python-compileerr-06",
+  "fault_type": "compile error",
+  "language_runtime": "python",
+  "fixture_app": "fixture-app-python",
+  "base_ref": "fault/python-compileerr-06-base",
+  "service_name": "fixture-app-python",
+  "error_summary": "SyntaxError: '(' was never closed in stats.py, so importing it (and thus booting the app at all) fails",
+  "expected_behavior": "python3 -m py_compile stats.py succeeds, average_order_value([10,20,30]) returns 20, and the server boots and serves /healthz normally."
+}
