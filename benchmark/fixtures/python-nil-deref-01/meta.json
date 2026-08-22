@@ -3,7 +3,7 @@
   "fault_type": "runtime exception",
   "language_runtime": "python",
   "fixture_app": "fixture-app-python",
-  "base_ref": "fault/python-nil-deref-01-base",
+  "base_ref": "fault/python-nil-deref-01-base-v2",
   "service_name": "fixture-app-python",
   "error_summary": "AttributeError: 'NoneType' object has no attribute 'name' in summarize (order.py)",
   "expected_behavior": "GET /summarize returns HTTP 200 with a real body instead of dropping the connection, for an Order with no Customer attached, and the process keeps handling requests normally afterward."
