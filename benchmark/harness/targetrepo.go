@@ -61,9 +61,22 @@ func resetMergeTargetBranch(ctx context.Context, cloneDir string, f Fixture) err
 		return fmt.Errorf("fetch base_ref %s: %w", f.BaseRef, err)
 	}
 
+	// Dereference the tag to its commit before pushing to a branch ref. A
+	// lightweight tag ref already points straight at a commit, but an
+	// annotated tag ref (git tag -a) points at a tag object instead --
+	// pushing that tag object directly to refs/heads/* is invalid (branches
+	// may only point at commits) and GitHub rejects it with a bare "remote
+	// rejected", no reason given. "^{commit}" peels either kind down to the
+	// commit uniformly, so this works regardless of how a given base_ref tag
+	// was created.
+	sha, err := runGit(ctx, cloneDir, "rev-parse", f.BaseRef+"^{commit}")
+	if err != nil {
+		return fmt.Errorf("resolve base_ref %s to a commit: %w", f.BaseRef, err)
+	}
+
 	branch := mergeTargetBranch(f.FaultID)
 	if _, err := runGit(ctx, cloneDir, "push", "--force", "origin",
-		"refs/tags/"+f.BaseRef+":refs/heads/"+branch); err != nil {
+		sha+":refs/heads/"+branch); err != nil {
 		return fmt.Errorf("reset %s to %s: %w", branch, f.BaseRef, err)
 	}
 	return nil
