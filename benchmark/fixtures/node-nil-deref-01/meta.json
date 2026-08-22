@@ -3,7 +3,7 @@
   "fault_type": "runtime exception",
   "language_runtime": "node",
   "fixture_app": "fixture-app-node",
-  "base_ref": "fault/node-nil-deref-01-base-v3",
+  "base_ref": "fault/node-nil-deref-01-base-v4",
   "service_name": "fixture-app-node",
   "error_summary": "TypeError: Cannot read properties of undefined (reading 'name') in summarize (order.js)",
   "expected_behavior": "GET /summarize returns HTTP 200 with a real body instead of a dropped connection, for an Order with no Customer attached, and the process keeps handling requests normally afterward."

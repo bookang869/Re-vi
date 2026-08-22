@@ -3,7 +3,7 @@
   "fault_type": "runtime exception",
   "language_runtime": "node",
   "fixture_app": "fixture-app-node",
-  "base_ref": "fault/node-divzero-02-base-v3",
+  "base_ref": "fault/node-divzero-02-base-v4",
   "service_name": "fixture-app-node",
   "error_summary": "RangeError: Division by zero in divideShare (divide.js)",
   "expected_behavior": "GET /divide-share?total=X&parts=0 returns HTTP 400 instead of dropping the connection, GET /divide-share?total=100&parts=4 still returns 25, and the process keeps handling requests normally afterward."
