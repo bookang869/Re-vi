@@ -20,21 +20,25 @@ trust your test suite:
 
 ## Status
 
-**V1 is complete.** The observability/alerting infrastructure, the Go
+**Complete and live.** The observability/alerting infrastructure, the Go
 Ingestion Gateway, `hermes-triage.yml`, and the Hermes wrapper script all
-exist and have been verified end-to-end — both `PR_REVIEW` and `AUTONOMOUS`
-modes have live-tested runs (real `repository_dispatch` dispatches, real
-PRs/merges, real pages) against the companion repo,
-[`revi-hermes-target`](https://github.com/bookang869/revi-hermes-target),
-which holds `hermes-triage.yml`, the Hermes wrapper, and fixture apps
-standing in for "the production repo." The repair loop's gate now covers
-Go, Rust, Node/TS, and Python — each with a build check, a lint pass
+run end-to-end against a standing Oracle Cloud VPS, in both `PR_REVIEW` and
+`AUTONOMOUS` modes, against the companion repo
+[`revi-hermes-target`](https://github.com/bookang869/revi-hermes-target)
+(which holds `hermes-triage.yml`, the Hermes wrapper, and fixture apps
+standing in for "the production repo"). The repair loop's gate covers Go,
+Rust, Node/TS, and Python — each with a build check, a lint pass
 (`go vet`/`cargo clippy`/`eslint`/`ruff`), sibling-test-file enforcement,
 and a test-quality check (the sibling test must fail against the pre-fix
 code and only pass with the fix applied, catching a vacuous test that
-would otherwise pass either way). Work has moved on to the rest of the
-Phase 6 post-V1 backlog (re-provisioning a VPS, lock-refresh-while-active
-testing, wiring in a real protected app, and more) — see
+would otherwise pass either way). A controlled 96-trial fault-injection
+benchmark ([`docs/observability-part-b.md`](docs/observability-part-b.md))
+independently verified a 99% correct-repair rate across 32 unique faults
+spanning all four languages.
+
+What's left — wiring in a real protected app, an onboarding wizard,
+actor-based branch protection — is gated on a real team/app existing to
+design around, not on more engineering time; see
 [`docs/PLAN.md`](docs/PLAN.md) for the full list.
 
 [`docs/PRD.md`](docs/PRD.md) / [`docs/TRD.md`](docs/TRD.md) are living specs
