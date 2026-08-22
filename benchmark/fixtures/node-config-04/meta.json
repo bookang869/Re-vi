@@ -3,7 +3,7 @@
   "fault_type": "configuration failure",
   "language_runtime": "node",
   "fixture_app": "fixture-app-node",
-  "base_ref": "fault/node-config-04-base",
+  "base_ref": "fault/node-config-04-base-v3",
   "service_name": "fixture-app-node",
   "error_summary": "configuration failure: an invalid MAX_ORDER_AMOUNT value silently disables ordering instead of falling back to the documented default",
   "expected_behavior": "With MAX_ORDER_AMOUNT set to a non-numeric value, GET /validate-order?amount=50000 still returns 'accepted' (falling back to the documented 100000 default), while a genuinely over-limit amount is still rejected under the default."

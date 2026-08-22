@@ -3,7 +3,7 @@
   "fault_type": "incorrect API behavior",
   "language_runtime": "node",
   "fixture_app": "fixture-app-node",
-  "base_ref": "fault/node-badvalidation-07-base",
+  "base_ref": "fault/node-badvalidation-07-base-v3",
   "service_name": "fixture-app-node",
   "error_summary": "incorrect API behavior: /format-order accepts and echoes back negative amounts instead of rejecting them with 400",
   "expected_behavior": "GET /format-order?amount=-5 returns HTTP 400 with a JSON error body, while GET /format-order?amount=5 still returns HTTP 200 with {\"amount\":5,\"currency\":\"USD\"}."
