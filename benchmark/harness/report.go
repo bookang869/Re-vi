@@ -10,6 +10,7 @@ import (
 // run without opening the JSON file, not a replacement for
 // docs/observability-part-c.md's (not yet written) results dashboard.
 func printReport(records []TrialRecord) {
+	records = dedupeLatestPerTrial(records)
 	if len(records) == 0 {
 		fmt.Println("no trials recorded")
 		return
@@ -73,4 +74,32 @@ func valueOr(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// dedupeLatestPerTrial collapses to the last-recorded row per (fault_id,
+// trial_num), same "last write wins" rule stage1Gate already applies via its
+// own map. Store.Append never overwrites -- a retried trial (e.g. a harness/
+// infra error followed by a clean re-dispatch under the same trial_num, as
+// happened for go-nil-deref-01's Stage 1 tag-push bug) leaves both records
+// in the file, and without this the report would double-count it in
+// total_runs/harness_errors forever, long after the retry succeeded.
+func dedupeLatestPerTrial(records []TrialRecord) []TrialRecord {
+	type key struct {
+		faultID  string
+		trialNum int
+	}
+	latest := map[key]TrialRecord{}
+	var order []key
+	for _, r := range records {
+		k := key{r.FaultID, r.TrialNum}
+		if _, seen := latest[k]; !seen {
+			order = append(order, k)
+		}
+		latest[k] = r
+	}
+	out := make([]TrialRecord, 0, len(order))
+	for _, k := range order {
+		out = append(out, latest[k])
+	}
+	return out
 }

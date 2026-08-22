@@ -91,6 +91,82 @@ func TestResetMergeTargetBranch_CreatesBranchAtBaseRef(t *testing.T) {
 	}
 }
 
+// TestResetMergeTargetBranch_AnnotatedTag guards against a real bug found
+// running go-nil-deref-01's Stage 1 trial 2026-08-21: its base_ref
+// (fault/go-nil-deref-01-base-v2) is an annotated tag (git tag -a, cut
+// during an earlier postmortem), unlike every other fault's lightweight
+// tag. Pushing an annotated tag's ref directly to refs/heads/* pushes the
+// *tag object*, not the commit it points at -- git/GitHub reject that
+// silently ("remote rejected", no reason given) since branches may only
+// point at commits. resetMergeTargetBranch must dereference to the commit
+// first so it works for either kind of tag.
+func TestResetMergeTargetBranch_AnnotatedTag(t *testing.T) {
+	if _, err := runGit(context.Background(), ".", "--version"); err != nil {
+		t.Skip("git not available")
+	}
+	ctx := context.Background()
+	root := t.TempDir()
+	bare := filepath.Join(root, "origin.git")
+	seedDir := filepath.Join(root, "seed")
+	cloneDir := filepath.Join(root, "clone")
+
+	if _, err := runGit(ctx, root, "init", "--bare", bare); err != nil {
+		t.Fatalf("init bare: %v", err)
+	}
+	if _, err := runGit(ctx, root, "clone", bare, seedDir); err != nil {
+		t.Fatalf("clone seed: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(seedDir, "fixture-app-go"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(seedDir, "fixture-app-go", "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runGit(ctx, seedDir, withGitIdentity("add", "-A")...); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if _, err := runGit(ctx, seedDir, withGitIdentity("commit", "-m", "seed")...); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	baseRef := "fault/test-annotated-01-base"
+	if _, err := runGit(ctx, seedDir, withGitIdentity("tag", "-a", baseRef, "-m", "annotated base ref")...); err != nil {
+		t.Fatalf("annotated tag: %v", err)
+	}
+	if _, err := runGit(ctx, seedDir, "push", "origin", "HEAD", "refs/tags/"+baseRef); err != nil {
+		t.Fatalf("push seed+tag: %v", err)
+	}
+	if _, err := runGit(ctx, root, "clone", bare, cloneDir); err != nil {
+		t.Fatalf("clone harness dir: %v", err)
+	}
+
+	f := Fixture{FaultID: "test-annotated-01", BaseRef: baseRef}
+	if err := resetMergeTargetBranch(ctx, cloneDir, f); err != nil {
+		t.Fatalf("resetMergeTargetBranch with annotated tag: %v", err)
+	}
+
+	if _, err := runGit(ctx, seedDir, "fetch", "origin", "refs/heads/benchmark/test-annotated-01:refs/heads/check-branch"); err != nil {
+		t.Fatalf("fetch created branch: %v", err)
+	}
+	branchSHA, err := runGit(ctx, seedDir, "rev-parse", "refs/heads/check-branch")
+	if err != nil {
+		t.Fatalf("rev-parse branch: %v", err)
+	}
+	branchType, err := runGit(ctx, seedDir, "cat-file", "-t", branchSHA)
+	if err != nil {
+		t.Fatalf("cat-file -t branch tip: %v", err)
+	}
+	if branchType != "commit" {
+		t.Fatalf("benchmark/test-annotated-01 points at a %s, want commit", branchType)
+	}
+	commitSHA, err := runGit(ctx, seedDir, "rev-parse", baseRef+"^{commit}")
+	if err != nil {
+		t.Fatalf("rev-parse tag^{commit}: %v", err)
+	}
+	if branchSHA != commitSHA {
+		t.Fatalf("benchmark/test-annotated-01 (%s) does not point at base_ref's commit (%s)", branchSHA, commitSHA)
+	}
+}
+
 func TestMergedCommitSHAAndCheckoutWorktree(t *testing.T) {
 	if _, err := runGit(context.Background(), ".", "--version"); err != nil {
 		t.Skip("git not available")
