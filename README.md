@@ -45,6 +45,38 @@ design around, not on more engineering time; see
 and remain the source of truth whenever this README, `diagram.md`, or
 `easy-workflow.md` disagree with them.
 
+## Pausing repair (cost control)
+
+The observability/alerting stack runs 24/7 by design — that's the
+"overnight self-healing" premise. But the part that actually spends Claude
+tokens is narrower: only the moment `repository_dispatch` fires and Hermes
+runs. If you want alerts to keep being watched, logged, and shown in the
+Slack digest without spending tokens on repairs — you're not actively
+iterating, or just want to bound spend — you can turn off *just* that step
+without tearing down the stack:
+
+```
+# Disable — alerts still get ingested, enriched, and recorded, they just
+# never reach Hermes
+curl -X POST https://<your-gateway>/v1/admin/repair-enabled \
+  -H "Authorization: Bearer $REVI_ADMIN_TOKEN" \
+  -d '{"enabled": false}'
+
+# Re-enable
+curl -X POST https://<your-gateway>/v1/admin/repair-enabled \
+  -H "Authorization: Bearer $REVI_ADMIN_TOKEN" \
+  -d '{"enabled": true}'
+```
+
+Guarded by its own `REVI_ADMIN_TOKEN` (separate from `REVI_WEBHOOK_SECRET`
+— see `.env.example`). **Default is enabled**: a fresh clone that never
+touches this has repair on from the start, same behavior as before this
+existed. An alert that fires while paused is still recorded (its outcome
+shows `SKIPPED_OFF` via `GET /v1/runs/{alert_id}`) and still appears in the
+next morning's digest — it just never reaches Hermes. It can't cancel a
+repair already in progress, only stop new ones from starting. Full details
+in `docs/TRD.md` §4.
+
 ## How it fits together
 
 ```mermaid
