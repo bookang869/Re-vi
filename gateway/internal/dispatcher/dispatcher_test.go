@@ -45,7 +45,7 @@ func TestRun_DispatchesPublishedAlert(t *testing.T) {
 	gh := github.NewClient("test-token", "acme", "widgets")
 	gh.BaseURL = srv.URL
 
-	consumeCtx, err := Run(context.Background(), q, gh, "PR_REVIEW")
+	consumeCtx, err := Run(context.Background(), q, gh, "PR_REVIEW", nil)
 	if err != nil {
 		t.Fatalf("Run() error: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestRun_GivesUpAfterMaxAttempts(t *testing.T) {
 	gh := github.NewClient("test-token", "acme", "widgets")
 	gh.BaseURL = srv.URL
 
-	consumeCtx, err := Run(context.Background(), q, gh, "PR_REVIEW")
+	consumeCtx, err := Run(context.Background(), q, gh, "PR_REVIEW", nil)
 	if err != nil {
 		t.Fatalf("Run() error: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestRun_SkipsDuplicateAlertID(t *testing.T) {
 	gh := github.NewClient("test-token", "acme", "widgets")
 	gh.BaseURL = srv.URL
 
-	consumeCtx, err := Run(context.Background(), q, gh, "PR_REVIEW")
+	consumeCtx, err := Run(context.Background(), q, gh, "PR_REVIEW", nil)
 	if err != nil {
 		t.Fatalf("Run() error: %v", err)
 	}
@@ -265,6 +265,91 @@ func TestRun_SkipsDuplicateAlertID(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 	if got := countMatches(); got != 1 {
 		t.Errorf("got %d repository_dispatch calls for alert_id=%s, want exactly 1", got, a.AlertID)
+	}
+}
+
+// TestRun_SkipsWhenRepairDisabled guards the repair-enabled toggle
+// (2026-08-24 grilling session): when off, the dispatcher must never call
+// repository_dispatch, and must still release the flap lock so nothing
+// hangs or blocks a later alert for the same (service, error) pair.
+func TestRun_SkipsWhenRepairDisabled(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	q, err := queue.ConnectTest(ctx, "nats://127.0.0.1:4222")
+	if err != nil {
+		t.Skipf("no local NATS reachable, skipping: %v", err)
+	}
+	defer q.Close()
+
+	if err := q.SetRepairEnabled(ctx, false); err != nil {
+		t.Fatalf("SetRepairEnabled(false): %v", err)
+	}
+	defer q.SetRepairEnabled(context.Background(), true)
+
+	var mu sync.Mutex
+	var dispatchCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		dispatchCalls++
+		mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	gh := github.NewClient("test-token", "acme", "widgets")
+	gh.BaseURL = srv.URL
+
+	consumeCtx, err := Run(context.Background(), q, gh, "PR_REVIEW", nil)
+	if err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+	defer consumeCtx.Stop()
+
+	a := alerts.Alert{
+		AlertID:      fmt.Sprintf("toggle-off-test-%d", time.Now().UnixNano()),
+		Status:       "firing",
+		ServiceName:  fmt.Sprintf("toggle-off-service-%d", time.Now().UnixNano()),
+		TraceID:      "abc",
+		ErrorSummary: "boom",
+	}
+
+	// Pre-acquire the flap lock the way alerts.Publish would have before
+	// this message ever reached the dispatcher, so releasing it is
+	// actually observable.
+	lockValue := []byte(`{"status":"PROCESSING"}`)
+	if alreadyLocked, err := q.TryLock(context.Background(), a.ServiceName, a.ErrorSummary, lockValue); err != nil || alreadyLocked {
+		t.Fatalf("TryLock() setup failed: alreadyLocked=%v err=%v", alreadyLocked, err)
+	}
+
+	payload, err := json.Marshal(a)
+	if err != nil {
+		t.Fatalf("marshal alert: %v", err)
+	}
+	if _, err := q.JS.Publish(context.Background(), q.AlertSubject, payload); err != nil {
+		t.Fatalf("publish alert: %v", err)
+	}
+
+	// Poll for lock release -- the only externally observable signal that
+	// the skip path ran (dispatchCalls staying at 0 can't itself be waited
+	// on).
+	deadline := time.After(2 * time.Second)
+	for {
+		alreadyLocked, err := q.TryLock(context.Background(), a.ServiceName, a.ErrorSummary, lockValue)
+		if err == nil && !alreadyLocked {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for flap lock release after repair-disabled skip")
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+
+	mu.Lock()
+	got := dispatchCalls
+	mu.Unlock()
+	if got != 0 {
+		t.Errorf("got %d repository_dispatch calls while repair disabled, want 0", got)
 	}
 }
 

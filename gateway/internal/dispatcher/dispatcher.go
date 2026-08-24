@@ -16,6 +16,7 @@ import (
 	"github.com/bookang869/Re-vi/gateway/internal/github"
 	"github.com/bookang869/Re-vi/gateway/internal/metrics"
 	"github.com/bookang869/Re-vi/gateway/internal/queue"
+	"github.com/bookang869/Re-vi/gateway/internal/store"
 )
 
 // eventType must match hermes-triage.yml's `on: repository_dispatch: types:`
@@ -56,12 +57,33 @@ type clientPayload struct {
 // Run starts the durable consumer. It blocks only long enough to attach the
 // consumer; message handling happens in the background via the returned
 // jetstream.ConsumeContext, which the caller should Stop() on shutdown.
-func Run(ctx context.Context, q *queue.Queue, gh *github.Client, mode string) (jetstream.ConsumeContext, error) {
+// runStore may be nil (observability writes are best-effort, never block
+// alert processing — docs/observability-part-a.md).
+func Run(ctx context.Context, q *queue.Queue, gh *github.Client, mode string, runStore *store.Store) (jetstream.ConsumeContext, error) {
 	return q.Consume(ctx, func(msg jetstream.Msg) {
 		var a alerts.Alert
 		if err := json.Unmarshal(msg.Data(), &a); err != nil {
 			log.Printf("dispatcher: malformed message, dropping: %v", err)
 			msg.Term()
+			return
+		}
+
+		// Repair-enabled toggle (/v1/admin/repair-enabled, queue.RepairEnabled):
+		// checked before the dispatch-idempotency marker below, since a
+		// toggle-skipped alert was never dispatched -- claiming the
+		// "dispatched" marker for it would misrepresent what happened. A
+		// read error means we genuinely don't know whether to spend
+		// Claude tokens or not, so this retries rather than guessing
+		// either way, same posture as the mark-dispatched check below.
+		enabled, err := q.RepairEnabled(ctx)
+		if err != nil {
+			log.Printf("dispatcher: repair-enabled check failed for %s, will retry: %v", a.AlertID, err)
+			msg.NakWithDelay(dispatchRetryDelay)
+			return
+		}
+		if !enabled {
+			skipDisabled(ctx, q, runStore, a, mode)
+			msg.Ack()
 			return
 		}
 
@@ -116,4 +138,37 @@ func Run(ctx context.Context, q *queue.Queue, gh *github.Client, mode string) (j
 		log.Printf("dispatcher: repository_dispatch sent for %s (mode=%s)", a.AlertID, mode)
 		msg.Ack()
 	})
+}
+
+// skipDisabled closes out an alert without ever calling repository_dispatch,
+// because the repair-enabled toggle is off. It mirrors what digest.NewHandler
+// does for a real run's completion -- release the flap lock, record a
+// terminal SQLite outcome, write a digest entry -- so a skipped alert reads
+// as a deliberate, closed-out event rather than a hung or invisible one
+// (2026-08-24 grilling session). All three side effects are best-effort,
+// same convention as the rest of this codebase: logged on failure, never
+// blocking the caller.
+func skipDisabled(ctx context.Context, q *queue.Queue, runStore *store.Store, a alerts.Alert, mode string) {
+	lockKey := queue.LockKey(a.ServiceName, a.ErrorSummary)
+	if err := q.Locks.Delete(ctx, lockKey); err != nil {
+		log.Printf("dispatcher: failed to release flap lock for %s after repair-disabled skip: %v", a.AlertID, err)
+	}
+
+	runStore.RecordOutcome(ctx, store.RunOutcome{
+		AlertID: a.AlertID,
+		Outcome: "SKIPPED_OFF",
+		Summary: "Hermes dispatch skipped: repair-enabled toggle is off",
+	})
+
+	digestEntry := queue.DigestEntry{
+		AlertID:  a.AlertID,
+		Message:  fmt.Sprintf("[%s/SKIPPED_OFF] %s: repair disabled", mode, a.ErrorSummary),
+		LastSeen: time.Now().UTC().Format(time.RFC3339),
+	}
+	if err := q.UpsertDigestEntry(ctx, time.Now().Format("2006-01-02"), lockKey, digestEntry); err != nil {
+		log.Printf("dispatcher: failed to write digest entry for %s after repair-disabled skip: %v", a.AlertID, err)
+	}
+
+	metrics.IncRepairDisabledSkip()
+	log.Printf("revi.repair.disabled alert_id=%s mode=%s", a.AlertID, mode)
 }

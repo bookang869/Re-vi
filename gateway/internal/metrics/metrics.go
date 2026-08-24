@@ -1,7 +1,7 @@
-// Package metrics exposes the 3 Prometheus counters required by TRD Sec 5
-// on /metrics. Hand-rolled rather than pulling in prometheus/client_golang:
-// three counters is a few lines of text/plain formatting, not enough to
-// justify the first third-party dependency beyond nats.go.
+// Package metrics exposes the Prometheus counters required by TRD Sec 5 on
+// /metrics. Hand-rolled rather than pulling in prometheus/client_golang: a
+// handful of counters is a few lines of text/plain formatting, not enough
+// to justify the first third-party dependency beyond nats.go.
 package metrics
 
 import (
@@ -37,6 +37,12 @@ var (
 	// alert_id let through by an expired flap lock. Should stay at 0 under
 	// normal operation.
 	duplicateDispatchesSkipped uint64
+
+	// repairDisabledSkips counts alerts the dispatcher declined to
+	// dispatch because the repair-enabled toggle (queue.RepairEnabled,
+	// /v1/admin/repair-enabled) was off. Nonzero simply means the operator
+	// turned repair off for some period — not itself a signal of a bug.
+	repairDisabledSkips uint64
 )
 
 // IncDuplicateDigestEntries records one /v1/digest/entry report rejected by
@@ -62,6 +68,12 @@ func IncSmokeFailure() {
 // (TRD "revi.alert.received": fired on successful webhook entry processing).
 func IncAlertsReceived() {
 	atomic.AddUint64(&alertsReceived, 1)
+}
+
+// IncRepairDisabledSkip records one alert the dispatcher declined to
+// dispatch because the repair-enabled toggle was off.
+func IncRepairDisabledSkip() {
+	atomic.AddUint64(&repairDisabledSkips, 1)
 }
 
 // IncModeRouting records one repository_dispatch call routed under mode
@@ -99,4 +111,8 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "# HELP revi_duplicate_dispatches_skipped_total repository_dispatch calls skipped because the alert_id was already marked dispatched.\n")
 	fmt.Fprint(w, "# TYPE revi_duplicate_dispatches_skipped_total counter\n")
 	fmt.Fprintf(w, "revi_duplicate_dispatches_skipped_total %d\n", atomic.LoadUint64(&duplicateDispatchesSkipped))
+
+	fmt.Fprint(w, "# HELP revi_repair_disabled_skips_total Alerts not dispatched to Hermes because the repair-enabled toggle was off.\n")
+	fmt.Fprint(w, "# TYPE revi_repair_disabled_skips_total counter\n")
+	fmt.Fprintf(w, "revi_repair_disabled_skips_total %d\n", atomic.LoadUint64(&repairDisabledSkips))
 }

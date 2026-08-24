@@ -18,6 +18,7 @@ const (
 	LocksBucket      = "locks"
 	DigestBucket     = "digest"
 	DispatchedBucket = "dispatched"
+	ConfigBucket     = "config"
 
 	// Test* give `go test` its own stream, subject, and KV buckets,
 	// separate from StreamName/AlertSubject/LocksBucket/DigestBucket.
@@ -32,6 +33,7 @@ const (
 	TestLocksBucket      = "locks-test"
 	TestDigestBucket     = "digest-test"
 	TestDispatchedBucket = "dispatched-test"
+	TestConfigBucket     = "config-test"
 
 	// lockTTL is a backstop, not the primary release mechanism (changed
 	// 2026-08-19 -- was 30min and the sole mechanism, TRD Sec 6's original
@@ -63,6 +65,7 @@ type Queue struct {
 	Locks      jetstream.KeyValue
 	Digest     jetstream.KeyValue
 	Dispatched jetstream.KeyValue
+	Config     jetstream.KeyValue
 
 	StreamName   string
 	AlertSubject string
@@ -71,7 +74,7 @@ type Queue struct {
 // Connect dials NATS and ensures the production stream and KV buckets
 // exist, creating them on first run and reusing them on every run after.
 func Connect(ctx context.Context, url string) (*Queue, error) {
-	return connect(ctx, url, StreamName, AlertSubject, LocksBucket, DigestBucket, DispatchedBucket)
+	return connect(ctx, url, StreamName, AlertSubject, LocksBucket, DigestBucket, DispatchedBucket, ConfigBucket)
 }
 
 // ConnectTest is Connect's isolated counterpart for `go test`: it dials the
@@ -80,10 +83,10 @@ func Connect(ctx context.Context, url string) (*Queue, error) {
 // never sees (and never real-dispatches) anything a test publishes. Every
 // test that talks to a local NATS instance must use this, not Connect.
 func ConnectTest(ctx context.Context, url string) (*Queue, error) {
-	return connect(ctx, url, TestStreamName, TestAlertSubject, TestLocksBucket, TestDigestBucket, TestDispatchedBucket)
+	return connect(ctx, url, TestStreamName, TestAlertSubject, TestLocksBucket, TestDigestBucket, TestDispatchedBucket, TestConfigBucket)
 }
 
-func connect(ctx context.Context, url, streamName, alertSubject, locksBucket, digestBucket, dispatchedBucket string) (*Queue, error) {
+func connect(ctx context.Context, url, streamName, alertSubject, locksBucket, digestBucket, dispatchedBucket, configBucket string) (*Queue, error) {
 	nc, err := nats.Connect(url)
 	if err != nil {
 		return nil, fmt.Errorf("nats connect: %w", err)
@@ -129,7 +132,17 @@ func connect(ctx context.Context, url, streamName, alertSubject, locksBucket, di
 		return nil, fmt.Errorf("create dispatched bucket: %w", err)
 	}
 
-	return &Queue{NC: nc, JS: js, Locks: locks, Digest: digest, Dispatched: dispatched, StreamName: streamName, AlertSubject: alertSubject}, nil
+	// No TTL: unlike locks/dispatched, a config flag must persist until
+	// someone explicitly changes it, not expire on its own.
+	cfg, err := js.CreateOrUpdateKeyValue(ctx, jetstream.KeyValueConfig{
+		Bucket: configBucket,
+	})
+	if err != nil {
+		nc.Close()
+		return nil, fmt.Errorf("create config bucket: %w", err)
+	}
+
+	return &Queue{NC: nc, JS: js, Locks: locks, Digest: digest, Dispatched: dispatched, Config: cfg, StreamName: streamName, AlertSubject: alertSubject}, nil
 }
 
 func (q *Queue) Close() {

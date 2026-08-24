@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/bookang869/Re-vi/gateway/internal/admin"
 	"github.com/bookang869/Re-vi/gateway/internal/alerts"
 	"github.com/bookang869/Re-vi/gateway/internal/config"
 	"github.com/bookang869/Re-vi/gateway/internal/digest"
@@ -43,7 +44,7 @@ func main() {
 	log.Printf("nats: connected, stream %s and KV buckets ready", queue.StreamName)
 
 	gh := github.NewClient(cfg.GitHubTokenDispatch, cfg.GitHubOwner, cfg.GitHubRepo)
-	consumeCtx, err := dispatcher.Run(context.Background(), q, gh, cfg.Mode)
+	consumeCtx, err := dispatcher.Run(context.Background(), q, gh, cfg.Mode, runStore)
 	if err != nil {
 		log.Fatalf("dispatcher: %v", err)
 	}
@@ -63,6 +64,8 @@ func main() {
 	mux.HandleFunc("/v1/alerts", alerts.NewHandler(cfg.WebhookSecret, q, logsClient, cfg.Mode, runStore))
 	mux.HandleFunc("/v1/digest/entry", digest.NewHandler(cfg.WebhookSecret, q, runStore))
 	mux.HandleFunc("GET /v1/runs/{alert_id}", runs.NewHandler(cfg.WebhookSecret, runStore))
+	mux.HandleFunc("GET /v1/admin/repair-enabled", admin.NewGetHandler(cfg.AdminToken, q))
+	mux.HandleFunc("POST /v1/admin/repair-enabled", admin.NewSetHandler(cfg.AdminToken, q))
 
 	log.Printf("gateway listening on %s (mode=%s)", cfg.ListenAddr, cfg.Mode)
 	if err := http.ListenAndServe(cfg.ListenAddr, mux); err != nil {

@@ -29,6 +29,13 @@ type Config struct {
 	EscalationWebhookURL    string // REVI_ESCALATION_WEBHOOK_URL
 	EscalationWebhookSecret string // REVI_ESCALATION_WEBHOOK_SECRET
 
+	// AdminToken: REVI_ADMIN_TOKEN, Bearer token for /v1/admin/repair-enabled.
+	// No safe default and no fail-fast requirement here: an unset token
+	// makes the endpoint's own validBearer check reject every request
+	// (secret == "" never matches), so the toggle is safely inert rather
+	// than either open or unavailable.
+	AdminToken string
+
 	VictoriaLogsURL string // REVI_VICTORIALOGS_URL
 	NATSURL         string // REVI_NATS_URL
 
@@ -53,6 +60,8 @@ func Load() (Config, error) {
 
 		EscalationWebhookURL:    os.Getenv("REVI_ESCALATION_WEBHOOK_URL"),
 		EscalationWebhookSecret: os.Getenv("REVI_ESCALATION_WEBHOOK_SECRET"),
+
+		AdminToken: os.Getenv("REVI_ADMIN_TOKEN"),
 
 		VictoriaLogsURL: getEnvDefault("REVI_VICTORIALOGS_URL", "http://victoria-logs:9428"),
 		NATSURL:         getEnvDefault("REVI_NATS_URL", "nats://nats:4222"),
