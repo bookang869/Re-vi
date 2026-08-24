@@ -160,6 +160,12 @@ locking and token rules have constraints that aren't obvious from a
 
 ## Local stack
 
+**Prerequisites:** Docker + Docker Compose v2, a GitHub token scoped to
+`repository_dispatch` on the target repo (`GITHUB_TOKEN_DISPATCH`), and a
+[Tailscale auth key](https://login.tailscale.com/admin/settings/keys)
+(`TS_AUTHKEY`) if you want the Funnel tunnel up. Go is only needed if you're
+building the Gateway outside Docker (see below).
+
 ```
 docker compose up -d
 ```
@@ -180,6 +186,22 @@ reads the env var — same secret, two consumers):
 mkdir -p secrets
 openssl rand -hex 32 > secrets/revi_webhook_secret
 ```
+
+**Verify it's running:**
+
+```
+docker compose ps                       # all services should be Up
+curl http://localhost:8080/healthz      # Gateway -> 200 OK
+curl http://localhost:8428/health       # VictoriaMetrics -> OK
+```
+
+This stack alone gets you the observability pipeline (App → Gateway) and
+proves the Gateway is receiving alerts. It does **not** by itself show the
+self-healing loop — that also needs the companion
+[`revi-hermes-target`](https://github.com/bookang869/revi-hermes-target)
+repo checked out and configured with its own tokens, since that's where
+`hermes-triage.yml` and the app Hermes patches actually live (see
+"How it fits together" above).
 
 ### Gateway (Go)
 
